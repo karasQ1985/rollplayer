@@ -1,0 +1,24 @@
+# 默认让 Git 自行识别文本/二进制，不做强制换行转换
+* text=auto
+
+# Windows 批处理必须保持 CRLF，否则 cmd 解析会出错
+*.bat text eol=crlf
+
+# 二进制资源：禁止 diff / 禁止换行处理
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.woff2 binary
+*.woff binary
+*.ttf binary
+*.sqlite binary
+
+# 文档与源码在 diff 里显示为文本
+*.md text
+*.mjs text
+*.js text
+*.css text
+*.html text
+*.json text

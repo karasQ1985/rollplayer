@@ -1,0 +1,23 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.{js,mjs,json,html,css,md}]
+indent_size = 2
+
+# start.bat 为 GBK 编码（cmd 默认代码页 936 才能正常显示中文），编辑器请以 ANSI/GBK 打开
+[*.bat]
+end_of_line = crlf
+indent_style = tab
+
+[*.py]
+indent_size = 4
+
+[*.md]
+trim_trailing_whitespace = false

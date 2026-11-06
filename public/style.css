@@ -1,0 +1,1486 @@
+/* 本地 Inter 可变字体（标注全部文字的正文字族；系统未安装 Inter 时原来会回退成雅黑，字形不对） */
+@font-face {
+  font-family: "Inter";
+  src: url("assets/fonts/inter-var.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg: #12141a;
+  --panel: #1a1d26;
+  --panel2: #232733;
+  --line: #2c3040;
+  --text: #e6e8ef;
+  --muted: #8b90a0;
+  --accent: #4f8cff;
+  --ok: #2ecc71;
+  --err: #e74c3c;
+  --play: #f5c518;
+  --radius: 8px;
+
+  /* 玻璃拟态（Winamp 紫蓝参考）——不用 backdrop-filter，保持最小性能 */
+  --grad: linear-gradient(135deg, #191446 0%, #131c42 46%, #0e1632 100%);
+  --glass-1: linear-gradient(180deg, rgba(150,168,255,.14), rgba(110,132,225,.07));
+  --glass-2: linear-gradient(180deg, rgba(150,168,255,.10), rgba(100,120,210,.05));
+  --glass-line: rgba(190,205,255,.16);
+  --glass-hi: rgba(255,255,255,.06);
+  --glass-ctl: rgba(150,168,255,.08);
+  --glass-ctl-hi: rgba(150,168,255,.13);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  background: var(--grad);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 音效可视化背景：固定最底层，内容半透明浮在其上 */
+.viz-bg {
+  position: fixed; inset: 0; z-index: 0;
+  width: 100vw; height: 100vh; display: block;
+  pointer-events: none;
+}
+
+/* ---------- 头部（按 web viewr 标注 标题栏 2560×72） ---------- */
+header {
+  position: relative; z-index: 1;
+  flex: 0 0 auto;
+  height: 72px;                        /* 标注标题栏高 72 */
+  background: var(--glass-1);
+  border-bottom: 1px solid var(--glass-line);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+}
+/* Roll Play播放机 [420,43 334×44] fs36 ls20% w600（相对左 16 / 上 14） */
+header .hd-title {
+  position: absolute; left: 16px; top: 14px; margin: 0;
+  font-size: 36px; font-weight: 600; letter-spacing: 0.2em;
+  color: #fff; white-space: nowrap;
+  font-family: Inter, "Microsoft YaHei", sans-serif;
+}
+/* 第一轮 [807,48 96×34] fs28 ls20% w600 #6299FF（相对左 403 / 上 19） */
+header .hd-round {
+  position: absolute; left: 403px; top: 19px;
+  font-size: 28px; font-weight: 600; letter-spacing: 0.2em;
+  color: #6299FF; white-space: nowrap;
+  font-family: Inter, "Microsoft YaHei", sans-serif;
+}
+/* 本轮 XXXX / XXXX（Frame90 [940,26 444×78]）fs24 ls20% 色 #1D76C9 op0.53；
+   本轮 = Regular 400，数值 = Semi Bold 600，颜色与透明度完全相同 */
+header .hd-progress {
+  position: absolute; left: 546px; top: 13px;
+  display: flex; align-items: baseline;
+  font-size: 24px; letter-spacing: 0.2em; white-space: nowrap;
+  font-family: Inter, "Microsoft YaHei", sans-serif;
+}
+header .hd-k { color: #1D76C9; opacity: 0.53; font-weight: 400; }
+header .hd-n { color: #1D76C9; opacity: 0.53; font-weight: 600; margin-left: 5px; }
+/* 本轮进度细线（标注未画条，保留极淡视觉进度） */
+header .hd-bar {
+  position: absolute; left: 16px; right: 16px; bottom: 0; height: 2px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ---------- 顶部文字信息层 / 歌词层（播放时互换） ---------- */
+/* 文字层：与原来位置完全一致（内元素仍按 header 左上角定位） */
+header .hd-info {
+  position: absolute; inset: 0;
+  transform: translateX(0);
+  opacity: 1;
+  transition: transform .62s cubic-bezier(.5,.05,.35,1), opacity .46s ease;
+  will-change: transform, opacity;
+}
+/* 向左滑出 + 淡出；滑出距离略大于标题宽度，确保完全离场 */
+header.lyrics-mode .hd-info {
+  transform: translateX(-420px);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 歌词层：两行，上行原文（30）、下行译文（26，小 4 号） */
+header .hd-lyrics {
+  position: absolute; left: 0; right: 0; top: 0; bottom: 2px;
+  display: flex; flex-direction: column; justify-content: center;
+  gap: 1px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .5s ease .06s;
+}
+header.lyrics-mode .hd-lyrics { opacity: 1; }
+
+header .hd-lyric-row {
+  position: relative; overflow: hidden;
+  text-align: left;
+  /* 左右两端渐隐：文字进出都带淡入淡出 */
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 7%, #000 93%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 7%, #000 93%, transparent 100%);
+}
+header .hd-lyric-main { height: 33px; line-height: 33px; font-size: 30px; }
+header .hd-lyric-sub  { height: 28px; line-height: 28px; font-size: 26px; }
+
+header .hd-lyric-track {
+  display: inline-block;
+  white-space: nowrap;
+  font-family: Inter, "Microsoft YaHei", sans-serif;
+  letter-spacing: 0.04em;
+  will-change: transform;
+  animation-name: hdLyricRun;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  animation-duration: var(--hd-dur, 12s);
+  animation-iteration-count: 1;
+}
+header .hd-lyric-main .hd-lyric-track {
+  font-weight: 600; letter-spacing: 0.06em;
+  color: #F3FBFF;
+  text-shadow: 0 0 18px rgba(90, 170, 255, 0.30);
+}
+header .hd-lyric-sub .hd-lyric-track {
+  font-weight: 400; letter-spacing: 0.10em;
+  color: #58A7D8;
+  text-shadow: 0 0 14px rgba(70, 140, 210, 0.22);
+}
+
+/* 从右往左：起点在视口右缘外，终点整条文字跑出左缘 */
+@keyframes hdLyricRun {
+  from { transform: translate3d(100vw, 0, 0); }
+  to   { transform: translate3d(-102%, 0, 0); }
+}
+
+/* 暂停时冻结滚动 */
+header .hd-lyrics.is-paused .hd-lyric-track { animation-play-state: paused; }
+
+
+/* 左右边缘热区：鼠标进入自动弹出对应抽屉（透明，不占视觉） */
+.edge-zone {
+  position: fixed; top: 0; bottom: 0; width: 26px; z-index: 5;
+  cursor: default;
+}
+.edge-left { left: 0; }
+.edge-right { right: 0; }
+
+.progress-wrap { flex: 1; min-width: 160px; }
+.progress-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.progress-bar {
+  height: 8px; background: var(--panel2); border-radius: 999px; overflow: hidden;
+}
+.progress-fill {
+  height: 100%; background: linear-gradient(90deg, var(--accent), var(--play));
+  border-radius: 999px; transition: width .3s ease;
+}
+.progress-bar.thin { height: 6px; }
+
+/* ---------- 主体（播放器焦点，左栏为抽屉） ---------- */
+main {
+  position: relative; z-index: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+}
+.player-panel { flex: 1 1 auto; }
+
+/* 左栏抽屉：按 web viewr 标注 设置面板 530×790，绝对定位布局，收起时左移 */
+.library-panel {
+  position: absolute; left: 0; top: 3px;
+  width: 530px; height: calc(790px + var(--tools-h, 40px)); z-index: 6;   /* 标注 404,104 530×790（header 72 → top 3 ≈ 75）；底部折叠工具栏展开时整体向下延长 */
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(68,76,115,0.20), rgba(80,107,158,0.20));
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  overflow: hidden;
+  transform: translateX(-100%);
+  transition: transform .8s cubic-bezier(.4, .15, .6, .85), height .28s ease;   /* 接近线性：1.2s 匀速铺开，仅两端极轻微加减速 */
+  box-shadow: 8px 0 24px rgba(0,0,0,.35);
+  color: #fff;
+}
+.library-panel.open { transform: none; }
+/* 目录列表下方折叠工具栏展开：整栏内容随之整体下移 */
+.library-panel.tools-open { --tools-h: 96px; }
+
+/* 媒体库栏底板 [20,20 490×40] 渐变0.15 */
+.titlebar {
+  position: absolute; left: 20px; top: 20px; width: 490px; height: 40px;
+  background: linear-gradient(180deg, #7083B5, #4F6292); opacity: 0.15; pointer-events: none;
+}
+/* 媒体库文字 [436,131 82×29] fs24 ls20% w700（相对 32,27） */
+.t-title {
+  position: absolute; left: 32px; top: 20px; height: 40px; line-height: 40px;
+  margin: 0; font-size: 24px; font-weight: 700; color: #fff; letter-spacing: 0.2em;
+  white-space: nowrap; font-family: Inter, "Microsoft YaHei", sans-serif;
+}
+.drawer-toggle { background: none; border: none; color: var(--muted); font-size: 13px; cursor: pointer; }
+
+/* 右上图标按钮（标注 [802/842/882,128] → 相对面板 398/438/478，32×32 top24） */
+.drawer-pin, .icon-foldadd, .icon-circle {
+  position: absolute; top: 24px; width: 32px; height: 32px;
+  background: rgba(255,255,255,0.1); border-radius: 2px;
+  border: none; padding: 0; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 18px; line-height: 1;
+}
+.drawer-pin { left: 398px; }
+.icon-foldadd { left: 438px; }
+.icon-circle { left: 478px; }
+.drawer-pin:hover, .drawer-pin.pinned { color: #1D83AE; }
+
+/* 输入框 [20,69 490×30] */
+.dir-input {
+  position: absolute; left: 20px; top: 69px; width: 490px; height: 30px;
+  border-radius: 2px; background: rgba(15,15,15,0.3); border: 1px solid transparent;
+  color: #FFAD14; font-size: 18px; letter-spacing: 0.2em;
+  font-family: "FangSong","仿宋",serif; text-align: center; outline: none;
+}
+.dir-input::placeholder { color: #FFAD14; opacity: 1; }
+.dir-input:focus { border-color: rgba(255,255,255,0.4); }
+
+/* 目录列表 [22,107 486×256] 动态渲染（6 行 484×40，行距 42.4） */
+.dir-list {
+  position: absolute; left: 22px; top: 107px; width: 486px;
+  list-style: none; margin: 0; padding: 0; max-height: 256px; overflow-y: auto; overflow-x: hidden;
+}
+.dir-list li {
+  position: relative; height: 40px; width: 484px; margin-bottom: 2.5px;
+  display: flex; align-items: center;
+  font-family: "FangSong","仿宋",serif; font-size: 18px; letter-spacing: 0.2em;
+  color: #fff; white-space: nowrap; border-radius: 0;
+}
+/* 行背景（标注 fills.opacity：6 行统一 0.05） */
+.dir-list li::before {
+  content: ""; position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none;
+  background: rgba(255,255,255,0.05);
+}
+.dir-list li:hover::before { background: rgba(255,255,255,0.05); }
+.dir-list li .dot {
+  width: 4px; height: 4px; background: #D9D9D9; flex-shrink: 0; margin: 0 10px 0 39px;
+  position: relative; z-index: 1; transition: background .15s;
+}
+/* 路径文本：套用歌单三态（默认 白@0.4 / 经过 白@1 / 点击 渐变 #47E3FF→#004DDD） */
+.dir-list li > span.name {
+  position: relative; z-index: 1;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 372px; flex: 0 1 auto;
+  color: rgba(255, 255, 255, 0.4);
+  transition: color .15s;
+}
+/* 点击态整行光晕底座（与歌单列表同一组渐变值 + blur 6.3） */
+.dir-list li .glow {
+  position: absolute; inset: 0; opacity: 0; transition: opacity .15s ease;
+  pointer-events: none;
+  background: linear-gradient(90deg,
+    rgba(86, 134, 255, 0.40) 0%,
+    rgba(0, 57, 201, 0.40) 49%,
+    rgba(0, 47, 167, 0.148) 100%);
+  filter: blur(6.3px);
+}
+.dir-list li:hover .dot { background: #48CEFF; }
+.dir-list li:hover > span.name { color: #FFFFFF; }
+.dir-list li.active .glow { opacity: 1; }
+.dir-list li.active .dot { background: #D9D9D9; }
+.dir-list li.active > span.name {
+  background-image: linear-gradient(90deg, #47E3FF 0%, #004DDD 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+}
+.dir-list li .rm {
+  position: relative; z-index: 1;
+  margin-left: auto; background: none; border: none; color: #fff; cursor: pointer;
+  font-size: 20px; line-height: 1; width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+}
+.dir-list li .rm:hover { color: #ff6b6b; }
+.dir-list li { cursor: pointer; }
+
+/* ---------- 目录列表下方的折叠工具栏（默认只露一行标题；展开后抽屉向下延长） ---------- */
+.dir-tools {
+  position: absolute; left: 22px; top: 366px; width: 486px; z-index: 2;
+}
+.dir-tools-head {
+  width: 100%; height: 34px; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 14px; border: none; border-radius: 4px; cursor: pointer;
+  background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.55);
+  font-size: 15px; letter-spacing: 0.2em;
+  font-family: Inter, "Microsoft YaHei", sans-serif;
+  transition: background .18s ease, color .18s ease;
+}
+.dir-tools-head:hover { background: rgba(255,255,255,0.09); color: #fff; }
+.dir-tools-head .dt-chev {
+  width: 0; height: 0; margin-left: 10px; flex: none;
+  border-left: 5px solid transparent; border-right: 5px solid transparent;
+  border-top: 6px solid currentColor; opacity: .7;
+  transition: transform .28s cubic-bezier(.3,.1,.35,1);
+}
+.library-panel.tools-open .dir-tools-head .dt-chev { transform: rotate(180deg); }
+.dir-tools-body {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-top: 8px;
+  max-height: 0; opacity: 0; overflow: hidden;
+  transition: max-height .28s cubic-bezier(.3,.1,.35,1), opacity .2s ease;
+}
+.library-panel.tools-open .dir-tools-body { max-height: 48px; opacity: 1; }
+.tools-btn {
+  height: 40px; border-radius: 4px; cursor: pointer; padding: 0;
+  font-size: 14px; letter-spacing: 0.12em; color: #fff; white-space: nowrap;
+  font-family: Inter, "Microsoft YaHei", sans-serif;
+  background: linear-gradient(180deg, rgba(28,41,107,0.50), rgba(85,99,169,0.63));
+  border: 1px solid rgba(90,105,205,0.45);
+  transition: filter .16s ease, border-color .16s ease;
+}
+.tools-btn:hover { filter: brightness(1.16); border-color: rgba(125,145,250,0.8); }
+.tools-btn:active { filter: brightness(0.94); }
+.tools-btn.is-danger { color: #ffb3b3; border-color: rgba(255,110,110,0.4); }
+.tools-btn.is-danger:hover { border-color: rgba(255,110,110,0.75); }
+
+/* ---------- 抽屉二级菜单层：二级菜单在抽屉内上下左右居中，绝不越界 ---------- */
+.drawer-menu-layer {
+  position: absolute; inset: 0; z-index: 30;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(8,10,20,0.34);
+  backdrop-filter: blur(1px); -webkit-backdrop-filter: blur(1px);
+}
+.drawer-menu-layer.hidden { display: none; }
+/* 右侧曲目抽屉本身层级(3)低于播放器(4)，二级菜单会被浮层压住，
+   菜单打开期间临时抬到 8，关掉即回落 */
+.queue-panel.menu-open { z-index: 8; }
+/* 用两级选择器压住文件后段 .viz-menu 的基础样式（同特异性后者会赢） */
+.drawer-menu-layer .drawer-menu {
+  position: relative; z-index: 31; min-width: 0;
+  width: min(280px, calc(100% - 48px)); padding: 6px;
+  border-radius: 6px;
+  /* 抽屉内是二级浮层，必须不透明，否则底下按钮会透出来把文字搅糊 */
+  background: rgba(23,28,47,0.97);
+  border: 1px solid rgba(120,140,220,0.34);
+  box-shadow: 0 14px 36px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
+}
+.drawer-menu-layer .viz-menu-item {
+  padding: 10px 12px; font-size: 14px; letter-spacing: 0.08em; color: rgba(255,255,255,.86);
+}
+
+/* 分隔线 实线纯白 [22,373 / 22,579 / 22,660] 486 宽 */
+.divider.d1 { position: absolute; left: 22px; top: calc(373px + var(--tools-h, 40px)); width: 486px; height: 1px; background: #fff; }
+.divider.d2 { position: absolute; left: 22px; top: calc(579px + var(--tools-h, 40px)); width: 486px; height: 1px; background: #fff; }
+
+/* 开始扫描 [22,392 158×41] rx4 渐变 + 渐变描边（标注三按钮 x 426/588/751 → 22/184/347） */
+.scanbtn {
+  position: absolute; left: 22px; top: calc(392px + var(--tools-h, 40px)); width: 158px; height: 41px;
+  border-radius: 4px; cursor: pointer; padding: 0;
+  background: linear-gradient(180deg, rgba(28,41,107,0.50), rgba(85,99,169,0.63));
+  border: 2px solid transparent; background-clip: padding-box;
+  transition: background .18s ease, transform .08s ease, box-shadow .18s ease;
+}
+.scanbtn::before {
+  content: ""; position: absolute; inset: -2px; border-radius: 6px; padding: 2px;
+  background: linear-gradient(180deg, rgba(90,105,205,0.57), rgba(58,60,135,0.66));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
+  transition: background .18s ease;
+}
+/* 鼠标悬停：填充提亮 + 描边提亮 + 外发光；按下：下沉 1px 背景压暗 */
+.scanbtn:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(45,62,150,0.62), rgba(120,136,208,0.74));
+  box-shadow: 0 0 14px rgba(90,120,225,0.40);
+}
+.scanbtn:hover:not(:disabled)::before {
+  background: linear-gradient(180deg, rgba(125,145,250,0.80), rgba(92,97,190,0.86));
+}
+.scanbtn:active:not(:disabled) {
+  transform: translateY(1px);
+  background: linear-gradient(180deg, rgba(20,30,80,0.62), rgba(70,85,155,0.70));
+  box-shadow: 0 0 8px rgba(90,120,225,0.28);
+}
+.scanbtn .lbl {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+  font-size: 18px; font-weight: 400; color: #fff; letter-spacing: 0.25em;
+  white-space: nowrap; font-family: Inter, "Microsoft YaHei", sans-serif;
+}
+.scanbtn:disabled { opacity: .45; cursor: not-allowed; }
+/* 开始轮播：复用扫描钮底板，第 2 个等距按钮（标注 588 → 184） */
+.playbtn { left: 184px; width: 158px; }
+/* 恢复播放：第 3 个等距按钮（标注 751 → 347），无未完成轮次时隐藏 */
+.resumebtn { left: 347px; width: 158px; }
+.resumebtn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* 统计 3 行（标注 426,550 486×97；行 35 高步进 35：550/585/620 → 相对 446/481/516） */
+.pool-stats { position: absolute; left: 22px; top: calc(446px + var(--tools-h, 40px)); width: 486px; height: 97px; }
+.stat-row {
+  position: absolute; left: 0; width: 486px; height: 35px; padding-left: 23px;
+  display: flex; align-items: center;
+  font-size: 18px; letter-spacing: 0.2em; color: #fff; opacity: 0.5;
+  font-family: Inter, "Microsoft YaHei", sans-serif; white-space: nowrap;
+}
+.stat-row:nth-child(1) { top: 0; }
+.stat-row:nth-child(2) { top: 35px; }
+.stat-row:nth-child(3) { top: 70px; }
+.stat-row::before {
+  content: ""; position: absolute; left: 120px; top: 50%; transform: translateY(-50%);
+  width: 245px; height: 1px;
+  background: repeating-linear-gradient(90deg, rgba(255,255,255,1) 0 8px, rgba(255,255,255,0) 8px 16.5px);
+}
+.stat-row b, .stat-row .ext-dist {
+  position: absolute; left: 378px;
+  font-weight: 400; font-size: 18px; letter-spacing: 0.2em; max-width: 108px;
+}
+.ext-dist { color: #fff; }
+
+/* 排序 checkbox + 两行（标注排序框 [22,579 486×70]，on/文字 相对框内 top17） */
+.seq-wrap { position: absolute; left: 22px; top: calc(579px + var(--tools-h, 40px)); width: 486px; height: 70px; }
+.seq-label {
+  position: absolute; left: 0; top: 17px; height: 24px;
+  display: flex; align-items: center; cursor: pointer;
+  font-size: 24px; font-weight: 300; letter-spacing: 0.25em; color: #fff; opacity: 0.8;
+  font-family: Inter, "Microsoft YaHei", sans-serif; white-space: nowrap;
+}
+.seq-label input {
+  appearance: none; -webkit-appearance: none;
+  width: 24px; height: 24px; border-radius: 6px; position: relative;
+  cursor: pointer; margin: 0 57.5px 0 0; flex-shrink: 0;
+}
+.seq-label input::after {
+  content: ""; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px;
+  border-radius: 4px; background: #090909; opacity: 0.52;
+}
+.seq-label input:not(:checked) { background: rgba(37,37,37,0.31); }
+.seq-label input:checked { background: #252525; }
+.seq-label input:checked::after { background: #1D83AE; opacity: 1; }
+.seq-hint {
+  position: absolute; left: 109.5px; top: 44px;
+  font-size: 16px; font-weight: 300; letter-spacing: 0.2em; color: #fff; opacity: 0.8;
+  font-family: Inter, "Microsoft YaHei", sans-serif; white-space: nowrap;
+}
+
+/* 扫描进度（并入底部信息栏区域，扫描时显示） */
+.scan-progress { position: absolute; left: 22px; top: calc(671px + var(--tools-h, 40px)); width: 486px; }
+.scan-progress .progress-bar { height: 4px; background: rgba(255,255,255,0.15); border-radius: 2px; }
+.scan-progress .progress-fill { background: #1D83AE; height: 100%; border-radius: 2px; }
+.scan-progress .progress-text { margin-top: 4px; font-size: 12px; color: rgba(255,255,255,0.6); }
+/* 信息栏顶部分隔线（标注 Line 4 real 660） */
+.divider.d3 { position: absolute; left: 22px; top: calc(660px + var(--tools-h, 40px)); width: 486px; height: 1px; background: #fff; }
+/* 底部状态信息栏（标注信息栏文字 [426,774 486×100] fs16 ls25% #FF5DB6） */
+.drawer-info {
+  position: absolute; left: 22px; top: calc(670px + var(--tools-h, 40px)); width: 486px; height: 100px;
+  font-size: 16px; line-height: 25px; color: #FF5DB6; letter-spacing: 0.25em;
+  font-family: Inter, "Microsoft YaHei", sans-serif; overflow: hidden;
+}
+.drawer-info .di-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 通用按钮（播放器等其他区域也使用，保留定义） */
+.btn {
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  padding: 7px 14px; border-radius: var(--radius); font-size: 13px; cursor: pointer;
+}
+.btn:hover:not(:disabled) { border-color: var(--accent); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.1); }
+.small { font-size: 12px; }
+.muted { color: var(--muted); }
+
+.plan-box {
+  position: absolute; left: 20px; top: calc(643px + var(--tools-h, 40px)); width: 440px; margin-top: 0; padding: 0;
+  background: none; border: none; border-radius: 0;
+  font-size: 11px; line-height: 14px; color: rgba(255,255,255,0.5);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-height: 14px;
+}
+.plan-box b { color: var(--play); }
+.restore-banner {
+  position: absolute; left: 20px; top: calc(643px + var(--tools-h, 40px)); width: 440px; margin-top: 0; padding: 0;
+  background: none; border: none; border-radius: 0;
+  font-size: 11px; line-height: 14px; color: var(--accent);
+  display: flex; align-items: center; gap: 8px;
+  white-space: nowrap; overflow: hidden;
+}
+/* 清空残留按钮：内联于 restore-banner，flex:none 防被省略截断 */
+.restore-banner .restore-clear {
+  flex: none; margin: 0; padding: 3px 9px; border-radius: 4px; cursor: pointer;
+  font-size: 11px; line-height: 14px; color: #fff;
+  background: linear-gradient(180deg, rgba(28,41,107,0.55), rgba(85,99,169,0.65));
+  border: 1px solid rgba(120,140,255,0.35);
+}
+.restore-banner .restore-clear:hover { filter: brightness(1.15); }
+
+/* 中区播放器（面板容器 + 占位 + 错误提示；播放器本体样式见文件末尾「播放器面板」段） */
+.player-panel {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--glass-2); min-height: 0; overflow-y: auto;
+  padding: 24px;
+}
+.player-placeholder { color: var(--muted); font-size: 14px; }
+
+.play-error {
+  margin-top: 12px; color: var(--err); background: rgba(231,76,60,.12);
+  border: 1px solid rgba(231,76,60,.4); padding: 10px; border-radius: var(--radius);
+  font-size: 12px; text-align: left;
+}
+
+/* ---------- 右侧曲目抽屉（按 web viewr 标注 list panel 410×1367） ---------- */
+.queue-panel {
+  position: absolute; right: 0; top: 0; bottom: 0;
+  width: 410px; z-index: 3;
+  background: var(--glass-2);
+  border-left: 1px solid var(--glass-line);
+  padding: 20px 20px 16px;              /* 标注首行 [2574,122] → 相对 20,20 */
+  overflow-y: auto;
+  transform: translateX(100%);
+  transition: transform .8s cubic-bezier(.4, .15, .6, .85);   /* 接近线性：1.2s 匀速铺开，仅两端极轻微加减速 */
+  box-shadow: inset 0 1px 0 var(--glass-hi), -8px 0 24px rgba(0,0,0,.35);
+}
+.queue-panel.open { transform: none; }
+/* 标注 list panel 无标题栏：头部缩为右上浮层（仅保留关闭/固定） */
+.drawer-head {
+  position: absolute; right: 10px; top: 8px; z-index: 2;
+  display: flex; align-items: center; gap: 8px; margin: 0;
+}
+.queue-panel h2 { display: none; }
+.queue-title { font-size: 11px; color: var(--muted); }
+/* grid 列必须 minmax(0,1fr)：否则 nowrap 长曲名会用「内容最小宽度」撑破列宽，行溢出到屏幕外 */
+.queue-panel .batch-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; align-content: start; }
+/* 列表行（标注 410×42，步进 44 = 行高42 + 间隔2）：4×4 播放点 + 序号文本 */
+.batch-item {
+  position: relative;
+  display: flex; align-items: center;
+  height: 42px; padding: 0; font-size: 20px;
+  font-family: Inter, "Microsoft YaHei", sans-serif;   /* 标注 Inter Regular */
+  min-width: 0;   /* 允许被 grid 列压缩，超长曲名走省略号 */
+  cursor: pointer;
+}
+.batch-item::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+  background: rgba(255, 255, 255, 0.25);
+  pointer-events: none; z-index: 2;
+}
+/* 标注「list/点击」态：410×42 线性渐变填充 opacity .4 + LAYER_BLUR 6.3 的整行光晕底座 */
+.batch-item::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  opacity: 0; transition: opacity .15s ease;
+  background: linear-gradient(90deg,
+    rgba(86, 134, 255, 0.40) 0%,
+    rgba(0, 57, 201, 0.40) 49%,
+    rgba(0, 47, 167, 0.148) 100%);
+  filter: blur(6.3px);
+}
+/* 播放标记点（标注 point 相对行 10,19 4×4）：默认 #D9D9D9 / 经过 #48CEFF / 点击同为 #D9D9D9 */
+.batch-item .pt {
+  width: 4px; height: 4px; background: #D9D9D9;
+  flex: 0 0 auto; margin: 0 12px 0 10px;
+  position: relative; z-index: 1;
+}
+/* 未完整播放：标记点转橙色（只染色标记点，不动文字与交互色） */
+.batch-item.partial-item .pt { background: #E6A23C; }
+/* 列表项文字：标注 默认 白 op0.4 / 经过 白 op1 / 点击 渐变 #47E3FF→#004DDD */
+.batch-item .name {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 0.2em; transition: color .15s;
+  position: relative; z-index: 1;
+}
+/* 状态符号 */
+.batch-item .st { flex: 0 0 auto; width: 15px; text-align: right; font-size: 14px; position: relative; z-index: 1; }
+.batch-item .st.playing { color: var(--play); }
+.batch-item .st.played { color: var(--ok); }
+.batch-item .st.partial { color: #e6a23c; }
+/* 状态二「经过」（hover）：文字提到白 op1，标记点转青蓝 #48CEFF，不加白底 */
+.batch-item:hover .name { color: #FFFFFF; }
+.batch-item:hover .pt { background: #48CEFF; }
+/* 状态三「点击」（按下 / 当前播放行）：整行渐变光晕 + 文字渐变 */
+.batch-item:active::before,
+.batch-item.active::before { opacity: 1; }
+/* 点击态标记点回到标注的 #D9D9D9（压过橙色未完成点） */
+.batch-item:active .pt,
+.batch-item.active .pt { background: #D9D9D9; }
+.batch-item:active .name,
+.batch-item.active .name {
+  background-image: linear-gradient(90deg, #47E3FF 0%, #004DDD 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+}
+/* 未完整播放：只由行尾 ◐ 符号表达（标注里没有橙色斜体文字，故不覆盖三态） */
+
+/* toast 提示 */
+#toastBox {
+  position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%);
+  background: rgba(18,20,26,.94); border: 1px solid var(--accent); color: var(--text);
+  padding: 9px 18px; border-radius: 999px; font-size: 13px;
+  opacity: 0; pointer-events: none; transition: opacity .25s ease; z-index: 200;
+  max-width: 80vw; text-align: center;
+}
+#toastBox.show { opacity: 1; }
+
+/* 自动播放被浏览器拦截时，播放按钮脉冲引导点击 */
+.btn.pulse { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245,197,24,.55); }
+  50% { box-shadow: 0 0 0 9px rgba(245,197,24,0); }
+}
+
+/* ---------- 弹窗 ---------- */
+.modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,.55);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.modal-card {
+  background: #171d2e; border: 1px solid var(--glass-line); border-radius: 12px;   /* 不透明实底：背后文字不再穿透，辨识度优先 */
+  padding: 24px 28px; max-width: 380px; text-align: center;
+  box-shadow: 0 18px 48px rgba(0,0,0,.62);
+}
+.modal-card h3 { margin: 0 0 8px; }
+.modal-card p { margin: 0 0 20px; line-height: 1.6; }
+.modal-actions { display: flex; justify-content: center; gap: 12px; }
+
+/* ---------- 目录浏览弹窗（极简：不透明实底，前往 + 选择文件夹为核心） ---------- */
+.modal-card.wide { max-width: 620px; width: 92%; text-align: left; }
+.modal-card.native-picker {
+  max-width: 500px; width: 92%; text-align: left;   /* 宽度收进左抽屉内，便于真正居中于抽屉而不是屏幕 */
+  background: #161b28; border: 1px solid var(--glass-line); border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.6);
+}
+.picker-pathrow { display: flex; gap: 8px; margin: 14px 0 12px; }
+.picker-pathrow input {
+  flex: 1; min-width: 0;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  padding: 7px 9px; border-radius: var(--radius); font-size: 13px;
+  font-family: Consolas, monospace;
+}
+.picker-pathrow input:focus { outline: none; border-color: var(--accent); }
+.pl-item.file { color: var(--muted); opacity: .75; cursor: default; }
+.pl-item.file:hover { background: none; }
+.picker-pathrow input {
+  flex: 1; min-width: 0;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  padding: 7px 9px; border-radius: var(--radius); font-size: 13px;
+  font-family: Consolas, monospace;
+}
+.picker-pathrow input:focus { outline: none; border-color: var(--accent); }
+.picker-list {
+  max-height: 300px; overflow-y: auto;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--panel2); margin-bottom: 12px;
+}
+.picker-list .pl-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; cursor: pointer; font-size: 13px;
+  font-family: Consolas, monospace; word-break: break-all;
+}
+.picker-list .pl-item:hover { background: var(--panel); }
+.picker-list .pl-item .ico { color: var(--accent); flex: 0 0 auto; }
+.picker-list .pl-item .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-list .pl-item .drive { color: var(--play); font-weight: 600; }
+.picker-list .pl-empty { padding: 16px; text-align: center; color: var(--muted); font-size: 13px; }
+.picker-list .pl-err { padding: 16px; text-align: center; color: var(--err); font-size: 13px; }
+.picker-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.picker-foot #pickerCur { font-family: Consolas, monospace; word-break: break-all; }
+.picker-opt { display: flex; align-items: center; margin: -2px 0 10px; font-size: 12px; color: var(--muted); }
+.picker-opt label { cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.picker-opt input { accent-color: var(--accent); }
+
+.hidden { display: none !important; }
+
+/* ===== 控件玻璃化（Winamp 参考：半透明质感，覆盖纯色填充） ===== */
+.btn, .dir-input-row input, .picker-pathrow input,
+.round-info {
+  background: var(--glass-ctl);
+  border-color: var(--glass-line);
+}
+.btn:hover:not(:disabled) { background: var(--glass-ctl-hi); }
+.btn.primary, .btn.primary:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); }
+.dir-input-row input:focus, .picker-pathrow input:focus { border-color: var(--accent); background: var(--glass-ctl-hi); }
+.picker-list .pl-item:hover { background: var(--glass-ctl-hi); }
+/* 进度条底槽玻璃化 */
+.progress-bar { background: var(--glass-ctl); }
+/* ---------- 频谱设置（齿轮按钮在播放器右上角；独立浮窗 + 右键菜单） ---------- */
+.viz-panel {
+  position: fixed; z-index: 6;
+  width: 1244px; /* 与播放器同宽（打开时 JS 覆盖为播放器实际宽度） */
+  border-radius: 10px;
+  background: var(--glass-2); border: 1px solid var(--glass-line);
+  box-shadow: inset 0 1px 0 var(--glass-hi), 0 8px 28px rgba(0,0,0,.4);
+  overflow: hidden;
+  /* 抽屉式：从播放器下方弹出（默认下移+淡入过渡，打开加 .viz-open 滑入） */
+  transform: translateY(24px); opacity: 0;
+  transition: transform 0.28s ease, opacity 0.28s ease;
+}
+.viz-panel.viz-open { transform: translateY(0); opacity: 1; }
+.viz-panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px; font-size: 12px; color: var(--muted); font-weight: 600;
+  background: var(--glass-1); border-bottom: 1px solid var(--glass-line);
+  user-select: none;
+}
+.viz-panel-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.viz-tabs { display: flex; border-bottom: 1px solid var(--glass-line); }
+.viz-tab {
+  flex: 1; padding: 7px 0; font-size: 12px; border: none;
+  background: none; color: var(--muted); cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.viz-tab:hover { color: var(--text); }
+.viz-tab.is-active { color: var(--play); border-bottom-color: var(--play); }
+.viz-tab-page { display: flex; flex-direction: column; gap: 8px; }
+.viz-presets { display: flex; gap: 6px; }
+.viz-preset-btn {
+  flex: 1; padding: 5px 0; font-size: 11px; border-radius: 6px;
+  background: var(--glass-ctl); border: 1px solid var(--glass-line); color: var(--muted); cursor: pointer;
+}
+.viz-preset-btn:hover { background: var(--glass-ctl-hi); color: var(--text); }
+.viz-preset-btn.is-active { background: var(--glass-ctl-hi); color: var(--play); border-color: rgba(245,197,24,.5); }
+.viz-rows { display: flex; flex-direction: column; gap: 6px; }
+.viz-rows label {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; color: var(--muted); white-space: nowrap;
+}
+.viz-rows input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); height: 14px; }
+.viz-rows select {
+  flex: 1; background: var(--glass-ctl); border: 1px solid var(--glass-line);
+  color: var(--text); font-size: 11px; border-radius: 6px; padding: 2px 4px;
+}
+.viz-rows input[type="text"] {
+  flex: 1; min-width: 0; background: var(--glass-ctl); border: 1px solid var(--glass-line);
+  color: var(--text); font-size: 11px; border-radius: 6px; padding: 4px 6px;
+}
+.viz-rows input[type="text"]:focus { outline: none; border-color: var(--accent); }
+.viz-val { width: 30px; text-align: right; font-size: 10px; color: var(--text); font-family: Consolas, monospace; }
+.viz-hint {
+  font-size: 10px; line-height: 1.4; color: var(--muted);
+  opacity: .8; white-space: normal; padding-top: 1px;
+}
+.viz-switch { display: flex; align-items: center; cursor: pointer; gap: 6px; }
+.viz-switch input { accent-color: var(--accent); }
+.viz-reset { margin-top: 2px; }
+
+/* ---------- 在线刮削反馈 ---------- */
+.scrape-sub { margin-top: 6px; }
+.scrape-status {
+  font-size: 11px; color: var(--muted); padding: 4px 8px;
+  background: var(--glass-ctl); border: 1px solid var(--glass-line); border-radius: 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.scrape-status.busy { color: var(--play); }
+.scrape-status.ok { color: #5fd38f; }
+.scrape-status.fail { color: #f07171; }
+.scrape-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; max-height: 96px; overflow-y: auto; }
+.scrape-log li { font-size: 10px; color: var(--muted); display: flex; justify-content: space-between; gap: 10px; white-space: nowrap; }
+.scrape-log li .lg-song { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.scrape-log li .lg-res { flex: none; }
+.scrape-log li.ok .lg-res { color: #5fd38f; }
+.scrape-log li.fail .lg-res { color: #f07171; }
+
+/* 刮削进行中：仅唱片闪烁提示（只动 opacity，不动 transform，不影响旋转与唱臂） */
+.poster-box.scraping .disc { animation: scrapeBlink 1.15s ease-in-out infinite; }
+@keyframes scrapeBlink {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.9; }
+}
+.viz-menu {
+  position: fixed; z-index: 7; min-width: 110px;
+  background: var(--glass-2); border: 1px solid var(--glass-line); border-radius: 8px;
+  box-shadow: inset 0 1px 0 var(--glass-hi), 0 8px 24px rgba(0,0,0,.4);
+  padding: 4px;
+}
+.viz-menu-item {
+  width: 100%; text-align: left; padding: 6px 8px; font-size: 12px; border: none;
+  background: none; color: var(--muted); border-radius: 6px; cursor: pointer;
+}
+.viz-menu-item:hover { background: var(--glass-ctl-hi); color: var(--text); }
+
+/* ---------- 频谱颜色细节（渐变停靠点 / 色环 / 频段权重） ---------- */
+.viz-grad-row { display: flex; flex-direction: column; gap: 5px; padding-top: 2px; border-top: 1px dashed var(--glass-line); }
+/* HSB 与频段增益：三列并排，消除单行纵向浪费 */
+.viz-hsb-row, .viz-freq-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px 12px; align-items: center; padding-top: 2px; }
+.viz-hsb-row label, .viz-freq-row label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.viz-hsb-row input[type="range"], .viz-freq-row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); height: 13px; }
+
+/* 可视化页分组 + 网格（形状/颜色/动效/频段） */
+.viz-group { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-top: 1px solid var(--glass-line); }
+.viz-group:first-of-type { border-top: 0; padding-top: 0; }
+.viz-gtitle { font-size: 10px; color: var(--muted); font-weight: 600; letter-spacing: 0.12em; }
+.viz-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 14px; align-items: center; }
+.viz-grid2 label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.viz-grid2 input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); height: 13px; }
+.viz-switch-row { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.viz-ring-box { display: flex; flex-direction: column; gap: 5px; padding: 7px; border: 1px dashed var(--glass-line); border-radius: 6px; background: var(--glass-1); }
+/* 可视化页内 select / 文本 / 开关的通用样式（不在 .viz-rows 内） */
+.viz-group > label { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
+.viz-group select { flex: 1; background: var(--glass-ctl); border: 1px solid var(--glass-line); color: var(--text); font-size: 11px; border-radius: 6px; padding: 2px 4px; }
+.viz-stops { display: flex; align-items: center; gap: 6px; }
+.viz-stops-label { font-size: 10px; color: var(--muted); flex: none; }
+.viz-stop {
+  width: 22px; height: 14px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--glass-line); padding: 0; position: relative;
+}
+.viz-stop.sel { outline: 2px solid var(--play); outline-offset: 1px; }
+
+/* ---------- 渐变四角（双线性：单柱上下 + 柱间左右） ---------- */
+.viz-corners { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.viz-corner {
+  height: 18px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--glass-line); padding: 0; position: relative;
+}
+.viz-corner.sel { outline: 2px solid var(--play); outline-offset: 1px; }
+
+/* ---------- 显示模式切换（条柱 / 放射 / 圆环） ---------- */
+.viz-modes { display: flex; gap: 6px; }
+.viz-mode-btn {
+  flex: 1; padding: 5px 0; font-size: 11px; border-radius: 6px;
+  background: var(--glass-ctl); border: 1px solid var(--glass-line); color: var(--muted); cursor: pointer;
+}
+.viz-mode-btn:hover { background: var(--glass-ctl-hi); color: var(--text); }
+.viz-mode-btn.is-active { background: var(--glass-ctl-hi); color: var(--play); border-color: rgba(245,197,24,.5); }
+
+/* ---------- SVG 图标接入（sprite currentColor）+ 播放条信息收敛 ---------- */
+.ic { display: block; width: 18px; height: 18px; }
+.ic-sm { width: 13px; height: 13px; }
+.ic-lg { width: 46px; height: 46px; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.btn .ic { width: 14px; height: 14px; flex: 0 0 auto; }
+
+/* =====================================================
+   播放器面板（ui-restore.html 迁移版 · 弹性自适应）
+   全部新类名以 .player 作用域隔离，不影响抽屉/弹窗/顶栏
+   ===================================================== */
+/* 封面横向位置注册成可插值属性：让 left 与 clip-path 的裁剪边界在 1.2s 过渡里逐帧同步 */
+@property --cover-x {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 20px;
+}
+/* 内容区左缘同样注册：340 ↔ 650 与封面 20 ↔ 330 必须同曲线同长，否则内容区瞬间跳到 650、封面还在途中，产生挤压/交叠 */
+@property --cx {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 340px;
+}
+.player {
+  --ptrack: #232656;   /* 副本 --track #232656 */
+  --pslider: #11FDFF;
+  --pbatch: #6058D0;
+  --pprog-from: #77ADFF;
+  --pprog-to: #0FFFFF;
+  --pposter: rgba(61, 76, 174, 0.16);   /* 副本 panle #3D4CAE @0.16 */
+
+  position: fixed;
+  width: 1670px;   /* 标注 Music Player 1160×350（主线支持 1160~2560 缩放，默认 1670） */
+  height: 350px;   /* 标注高度 */
+  /* 内容区左缘：无封面 340（标注 4 版）；封面展开后 650（标注 Music_Player_变体 B 版） */
+  --cx: 340px;
+  --cover-x: 20px;   /* 封面层滑出前藏唱片下面，展开后滑到 330（可插值，见 @property） */
+  transition: width 1.2s cubic-bezier(.19, 1, .22, 1), transform 1.2s cubic-bezier(.19, 1, .22, 1),
+              height .4s ease,
+              --cover-x 1.2s cubic-bezier(.19, 1, .22, 1), --cx 1.2s cubic-bezier(.19, 1, .22, 1);
+  transform-origin: left top;   /* 等比缩放以左上角为锚点，缩放后左缘不动 */
+  /* 可拖拽浮层：位置由 JS 管理（初始视口居中，按住标题/空白区拖动），设置抽屉跟随其底部弹出 */
+  left: 137px; top: 456px;
+  z-index: 4;
+  /* bg_player_main 图元：rx=2，渐变 #444C73→#506B9E 横向，fill-opacity 0.2（透出 viz 背景） */
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(68, 76, 115, 0.2) 0%, rgba(80, 107, 158, 0.2) 100%);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);   /* 副本 Rectangle 23 GLASS radius=4（小半径保留，开销可控） */
+  -webkit-backdrop-filter: blur(4px);
+  display: block;   /* 内部改为绝对定位贴副本坐标，无需 flex */
+  overflow: hidden;
+  isolation: isolate;
+  user-select: none;
+}
+
+/* 切歌前的「收拢」：这 1.5s 里宽度、内容左缘、封面位置统一放慢到 1.5s，
+   等复位结束才加载新歌封面，避免新图直接在旧版面上弹出来 */
+.player.settling {
+  transition: width 1.5s cubic-bezier(.19, 1, .22, 1), transform 1.5s cubic-bezier(.19, 1, .22, 1),
+              height .4s ease,
+              --cover-x 1.5s cubic-bezier(.19, 1, .22, 1), --cx 1.5s cubic-bezier(.19, 1, .22, 1);
+}
+
+/* ----- 左侧海报（封面位：有封面显示封面，无封面显示占位） 标注 poster image [20,21 310×310] ----- */
+.player .poster {
+  position: absolute;
+  left: 20px; top: 21px;
+  width: 310px; height: 310px;
+  z-index: 2;   /* 盖住下面的封面层，唱片因此压住封面 */
+  cursor: pointer;   /* 点击此处 = 展开/收起封面 */
+}
+/* ===== 封面层（标注 Music_Player_变体 B 版）：初始藏在唱片下 left 20，封面就绪后滑到 330 ===== */
+.player .cover-reveal {
+  position: absolute; left: var(--cover-x); top: 21px;
+  width: 310px; height: 310px; border-radius: 2px;
+  background: #000;   /* 黑底：淡入初期半透明时衬在封面下面，不透出别的东西 */
+  overflow: hidden;
+  z-index: 1;
+  opacity: 0; pointer-events: none;   /* 收起时不可点，展开后由 .has-cover 打开命中 */
+  cursor: pointer;
+  /* 封面右缘永远不超过 330（唱片容器右边界）：落在唱片区的那段直接裁掉。
+     这样海报可以保持原来的半透明渐变（频谱照透），不需要任何不透明打底 */
+  clip-path: inset(0 0 0 calc(330px - var(--cover-x)));
+  /* 横向位置交给 --cover-x 过渡（left 与裁剪边界逐帧同步）；透明度 1.8s 走「前缓后急」 */
+  transition: opacity 1.8s cubic-bezier(.4, 0, .85, .2);
+}
+.player.has-cover .cover-reveal { opacity: 1; pointer-events: auto; }
+/* 换封面重播一次「从唱片下滑出」：位移用 transform 叠加，不影响 left 布局值 */
+.player .cover-reveal.replay {
+  animation:
+    cover-slide-in 1.2s cubic-bezier(.19, 1, .22, 1) both,
+    cover-fade-in 1.8s cubic-bezier(.4, 0, .85, .2) both;
+}
+@keyframes cover-slide-in {
+  from { transform: translateX(-310px); clip-path: inset(0 0 0 310px); }
+  to   { transform: translateX(0);      clip-path: inset(0 0 0 0); }
+}
+@keyframes cover-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.player .cover-reveal img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: contain;
+}
+.player .cover-reveal .cover-reveal-label {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: Inter, "Microsoft YaHei", sans-serif;
+  font-size: 20px; letter-spacing: .54em; color: #fff; opacity: .55;
+}
+/* 有真实封面时隐藏 IMAGE 占位文字 */
+.player .cover-reveal img:not([hidden]) + .cover-reveal-label { display: none; }
+.player.has-cover { --cx: 650px; --cover-x: 330px; }
+.player.has-cover .cover-reveal { opacity: 1; pointer-events: auto; }
+.player .poster-box {
+  position: relative;
+  width: 100%; height: 100%;   /* 副本 panle 310×310 */
+  /* poster image / panle 图元：rx=2，GRADIENT_LINEAR（fill opacity 0.4）
+     stops: #0084FF @0 → #0043A7 @32.2% → #000943 @100%，方向「下亮上暗」（按标注预览采样确认）
+     副本 panle 标注 GLASS radius=62 —— 因播放器背景是动态频谱 canvas，
+     大半径 backdrop-filter 会每帧高斯模糊拖垮帧率，故不做 backdrop-filter，用渐变+半透明近似 */
+  border-radius: 2px;
+  /* 保持半透明渐变：频谱/背景从唱片区透出来（透视由封面的 clip-path 负责挡，不用实色底） */
+  background-image: linear-gradient(to top,
+    rgba(0, 132, 255, .40) 0%,
+    rgba(0, 67, 167, .40) 32.2%,
+    rgba(0, 9, 67, .40) 100%);
+  overflow: hidden;
+}
+.player .poster-box img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+}
+/* 主图 contain：310×310 正方形容器对 1:1 封面零裁切；非正方形源图（3:4/2:3 等）保持完整不裁 */
+.player .poster-box #coverImg { object-fit: contain; }
+/* 底层：同图放大模糊铺满，补 contain 留白（只在非 1:1 封面时可见） */
+.player .poster-box #coverBlur {
+  object-fit: cover;
+  filter: blur(16px) brightness(0.5) saturate(1.15);
+  transform: scale(1.14);
+}
+/* 变体 B 版：左侧唱片位始终保留（播放中继续转动），真实封面改为在右侧 .cover-reveal 里显示，
+   因此 has-art 不再隐藏唱片占位 */
+.player .poster-fallback {
+  position: absolute;
+  inset: 0;   /* 覆盖海报盒，音符/文字按副本绝对坐标定位 */
+}
+/* 无封面时的唱片动效（标注 record_disc_01 盘 210×210 @ [50,40]；record_disc_02 唱臂 51.46×163.12 @ [209,40]；music 音符 19.73×36.2 @ [145,127]，均相对 poster 310×310） */
+.player .disc { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+.player .disc .disc-plate {
+  position: absolute; left: 50px; top: 40px; width: 210px; height: 210px;
+  transform: rotate(0deg);           /* 转速由 app.js 的 discTick 逐帧写入（起播渐加速 / 暂停惯性滑停） */
+  will-change: transform;
+}
+/* 盘心音符：标注挂在容器层（不在旋转的盘组内），不随唱片转动 */
+.player .disc .disc-music {
+  position: absolute; left: 145px; top: 127px; width: 19.73px; height: 36.2px;
+  will-change: filter;               /* 播放时由 app.js 逐帧上色 + 打辉光（替身滤镜，不改原图） */
+}
+.player .disc .disc-arm {
+  position: absolute; left: 209px; top: 40px; width: 51.46px; height: 163.12px;
+  transform-origin: 42.54px 8.93px;   /* 唱臂支点圆心（SVG 42.95,9.02 按 51.462/51.96 缩放） */
+  transform: rotate(-16deg);         /* 未播放：指针抬起，离开盘面（末端外移约 45px） */
+  transition: transform .95s cubic-bezier(.42,.02,.24,1);   /* 停止/暂停时的回弹：平缓起手、尾部渐停，不做弹簧感 */
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,.45));
+}
+.player.playing .disc .disc-arm { transform: rotate(0deg); }   /* 播放：指针落到盘面 */
+/* 落针要干脆：覆盖基础规则里那条慢过渡（同特异性，靠书写顺序生效） */
+.player.playing .disc .disc-arm { transition: transform .5s cubic-bezier(.3,.05,.55,.95); }
+/* 唱针仪式：切歌时抬针 → 稍后停转（转速由 JS 降速滑停）→ 换片 → 新歌起播时盘先转、针再落回 */
+.player.cue-up .disc .disc-arm { transform: rotate(-16deg); transition: transform .5s cubic-bezier(.3,.05,.55,.95); }
+/* 播放中的针尖微颤：真实唱针压在盘面上会被沟槽带着轻微摆，完全静止反而像张图片。
+   幅度以「针尖位移」为准：支点到针尖约 154px，±0.6deg ≈ ±1.6px，总摆幅 ~3px，
+   正好是能感知到位置变化、又不像抖动的量。
+   关键：微颤跑的是独立 `rotate` 属性，抬/落跑的是 `transform`，两者叠加而不互相覆盖。
+   否则 animation 会接管 transform —— 暂停/停止时动画一撤，针会从 0 直接跳到 -16deg，
+   过渡根本不触发，看起来就是"啪一下弹回去"的生硬感。 */
+.player.playing .disc .disc-arm {
+  animation: armJitter 1.4s ease-in-out .5s infinite;
+}
+.player.cue-up .disc .disc-arm { animation: none; }
+@keyframes armJitter {
+  0%   { rotate: 0deg; }
+  16%  { rotate: -0.6deg; }
+  33%  { rotate: 0.25deg; }
+  49%  { rotate: -0.2deg; }
+  64%  { rotate: 0.53deg; }
+  82%  { rotate: -0.35deg; }
+  100% { rotate: 0deg; }
+}
+/* 第一行歌名：右侧预留 5 个功能按钮区（播放列表|添加目录|设置|刷新|全屏，右缘对齐按钮区左缘），防止长歌名与按钮重叠 */
+.player .track-head { display: flex; align-items: center; padding-right: 268px; }
+.player .track-head .meta { flex: 1 1 auto; min-width: 0; }
+.player .poster-label {
+  position: absolute; left: 0; top: 269px;   /* 标注 POSTER IMAGE [1171,563 310×28] → 相对 poster 0,269 */
+  width: 310px; height: 28px;
+  font-size: 20px;   /* 副本 POSTER IMAGE fs20 */
+  letter-spacing: 0.54em;   /* 副本 ls 54% */
+  color: #ffffff;
+  font-weight: 400;   /* 副本 fw400 */
+  display: flex; align-items: center; justify-content: center;
+  margin-right: -0.54em;   /* 抵消末字符字距，保证视觉居中 */
+}
+
+/* ----- 中间内容区 ----- */
+.player .player-body {
+  position: absolute;   /* 覆盖整个底板，内部控件按副本绝对坐标定位 */
+  inset: 0;
+}
+.player .song-title {
+  position: absolute;   /* 标注 Singname [340,21 1066×44] */
+  left: var(--cx); top: 22px;
+  right: 303px; width: auto; height: 44px;   /* 宽随播放窗口伸缩（右留 303px，右缘随宽度），超宽才省略 */
+  font-size: 36px;   /* 副本 fs36 */
+  font-weight: 600;   /* 副本 fw600 */
+  color: #F3FBFF;   /* 副本 #F3FBFF */
+  line-height: 44px;
+  letter-spacing: 0.2em;   /* 副本 ls 20% */
+  text-shadow: 4px 4px 8px rgba(0, 0, 0, 0.25);   /* 副本歌曲名 DROP_SHADOW radius=8 offset 4,4 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.player .album {
+  position: absolute;   /* 标注 专辑目录 [340,65 900×48]（文本框含行高），实现按字形基线 top77 */
+  left: var(--cx); top: 77px;
+  right: 463px; width: auto; height: 26px;
+  font-size: 20px;   /* 副本 fs20 */
+  color: rgba(255, 255, 255, 0.4);   /* 副本专辑文本 fill opacity 0.4 */
+  line-height: 26px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 分割线下方：目录与歌曲信息行 */
+.player .track-sub { margin-top: 10px; min-width: 0; }
+
+/* 歌词走马灯：单行，超宽时横向滚动 */
+/* 歌词 [340,103 高 72 = 两行 36]：上行＝当前句（逐字高亮＋低频呼吸），下行＝下一句（暗色预告） */
+.player .lyrics-line {
+  position: absolute;
+  left: var(--cx); top: 103px;
+  right: 119px; height: 72px;
+  font-size: 28px;   /* 副本 fs28 */
+  line-height: 36px;
+  color: #58A7D8;    /* 副本歌词 color #58A7D8 */
+  white-space: nowrap;
+  overflow: hidden;
+}
+.player .lyric-stack {
+  transform: translateY(0);
+  will-change: transform;
+}
+.player .lyric-row { position: relative; height: 36px; overflow: hidden; }
+.player .lyric-row .lyric-inner { display: inline-block; white-space: nowrap; }
+
+/* 下一句：低对比度预告，不做动画 */
+.player .lyric-row.next { color: rgba(88, 167, 216, .42); }
+
+/* 当前句：卡拉 OK 渐变，--k 由 JS 按句内时间推进（0% → 100%） */
+.player .lyric-row.cur .lyric-inner {
+  background-image: linear-gradient(90deg,
+    #DDF3FF 0%,
+    #DDF3FF var(--k, 0%),
+    #58A7D8 var(--k, 0%),
+    #58A7D8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+/* 当前句超长时横向缓慢往返（渐变随文字一起移动） */
+.player .lyric-row.cur.marquee .lyric-inner {
+  animation: lyric-marquee var(--mq-dur, 12s) ease-in-out infinite alternate;
+}
+@keyframes lyric-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(var(--mq-x, 0px)); }
+}
+/* 整行低频呼吸：只在播放中、只动 transform（合成器层） */
+.player.playing .lyric-row.cur { animation: lyric-breath 5.2s ease-in-out infinite; }
+@keyframes lyric-breath {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+/* 进度块：文本在各自进度条上方，播放进度条与批次进度条等宽 */
+.player .progress-block { position: relative; }
+.player .progress-block.playback {
+  position: absolute; left: var(--cx); top: 181px;   /* 标注时间码 [340,184]，右留 77px 随宽度伸缩 */
+  right: 77px; width: auto; height: 50px;
+}
+.player .bar-texts { position: absolute; left: 0; right: 0; top: 0; }
+.player .progress-block.playback .time { position: absolute; top: 0; line-height: 34px; }   /* fs28 文本框高34（标注 Frame43/44 34），底215 bar224 gap9 */
+.player .progress-block.playback #curTime { left: 0; }
+.player .progress-block.playback #totalTime { right: 0; left: auto; }
+.player .progress-block.playback .bar.play { position: absolute; left: 0; top: 43px; width: 100%; }   /* 副本底轨 y224 - playback top181 = 43 */
+.player .time {
+  font-size: 28px;   /* 副本时间 3:32 fs28 */
+  color: rgba(255, 255, 255, 0.78);
+  font-variant-numeric: tabular-nums;
+}
+/* 批次进度文本：副本 本批/本轮 fill opacity 0.4、fs24 */
+/* 批次进度：标注 本批14/20 [340,289 119×29]、本轮第60首 右对齐，底轨 y324 */
+.player .progress-block.batch {
+  position: absolute; left: var(--cx); top: 290px;
+  right: 78px; width: auto; height: 44px;
+}
+.player .progress-block.batch .time { position: absolute; top: 0; opacity: 0.4; font-size: 24px; line-height: 29px; }   /* 标注 Frame46/47 高29，底319 bar324 gap5 */
+.player .progress-block.batch .time#batchText { left: 0; }
+.player .progress-block.batch .time#roundPos { right: 0; left: auto; }
+.player .progress-block.batch .bar.batch { position: absolute; left: 1px; top: 34px; width: calc(100% - 1px); }   /* y324 - batch top290 = 34 */
+
+/* 分割装饰线（line_divider-1 图元）：标注 line [341,73]，实现右缘自适应 */
+.player .divider { position: absolute; left: calc(var(--cx) + 1px); top: 74px; right: 20px; width: auto; height: 2px; opacity: 0.5; }
+.player .divider svg { display: block; width: 100%; height: 2px; }
+
+/* 进度条本体 */
+.player .bar {
+  width: 100%;
+  height: 6px;
+  border-radius: 4px;   /* 副本 Progress-Bar cornerRadius=4 */
+  background: var(--ptrack);
+  position: relative;
+  cursor: pointer;
+  touch-action: none;
+}
+.player .bar::before {
+  /* 扩大竖向命中区，避免 6px 细条难点中 */
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -9px;
+  bottom: -9px;
+}
+.player .bar .fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: 4px;   /* 副本 Progress-Bar cornerRadius=4 */
+  width: 0%;
+}
+.player .bar.play .fill {
+  background: linear-gradient(90deg, var(--pprog-from) 0%, var(--pprog-from) 83.3%, var(--pprog-to) 100%);
+}
+.player .bar .thumb {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--pslider);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 8px rgba(17, 253, 255, 0.7);
+  pointer-events: none;
+  left: 0%;
+}
+
+/* ----- 按钮行 ----- */
+.player .buttons {
+  position: absolute; left: var(--cx); top: 242px;   /* 标注 button [339.57,242.21 798×42]，右缘 1137.6 距 1210 右 72.4 */
+  right: 72px; width: auto; height: 42px;
+  display: flex;
+  justify-content: space-between;   /* 标注 SPACE_BETWEEN：4 按钮等距，间隙随组宽均分 */
+  align-items: center;
+}
+.player .btn {
+  flex: 0 1 24.29%;   /* 标注 H:SCALE：每按钮 190/782≈24.29% 组宽，随组宽等比例缩放 */
+  min-width: 0;
+  height: 41px;   /* 标注按钮 y244：button 容器243内 top1，按钮底285=容器底 */
+  padding: 0 10px;
+  /* button off 图元：rx=10，填充 #7083B5→#4F6292 下→上 @0.15，描边 #6B7EB0→#4F6293 @0.15 */
+  border-radius: 10px;
+  border: 2px solid rgba(107, 126, 176, 0.15);
+  background: linear-gradient(0deg, rgba(112, 131, 181, 0.15) 0%, rgba(79, 98, 146, 0.15) 100%);
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: transform 0.06s ease, box-shadow 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.player .btn:hover:not(:disabled) {
+  filter: brightness(1.2);
+  border-color: rgba(107, 126, 176, 0.35);
+}
+.player .btn:active:not(:disabled) { transform: translateY(1px); }
+/* 高亮态（on）：播放按钮持久 on（播放中），其余按钮瞬时 on 后复原
+   button on 图元：填充 #1C296B→#5563A9 下→上（有效透明度 .30→.38），描边 #5A69CD→#3A3C87 */
+.player .btn.on {
+  border-color: rgba(90, 105, 205, 0.35);
+  background: linear-gradient(0deg, rgba(28, 41, 107, 0.3) 0%, rgba(85, 99, 169, 0.38) 100%);
+}
+/* 播放按钮：副本 Play\Stop 描边 #5A69CD→#3A3C87 @0.6（其余按钮 0.15）；
+   其 on 态背景 rgba(28,41,107,0.3)→rgba(85,99,169,0.38) 已等同副本 fill(opacity0.6×gradientAlpha)，无需再叠元素 opacity */
+.player .btn#playPauseBtn { border-color: rgba(90, 105, 205, 0.6); }
+.player .btn .ic { width: 18px; height: 18px; }   /* 标注图标 H:CENTER：保持固定比例，不随按钮缩放 */
+.player .btn .ic.ic-play { width: 21px; }
+.player .btn .ic.ic-pause { width: 21px; }
+.player .btn .ic.switch-text { width: 112px; height: 26px; } /* SWITCH 文字图元（4 倍后再缩小 2 倍 = 原 56×13 的 2 倍） */
+.player #skipBatchBtn { padding: 0; }
+/* display:block 会压过 hidden 属性，显式恢复（播放/暂停图标切换依赖 hidden） */
+.player .ic[hidden] { display: none !important; }
+
+/* ----- 右上角功能按钮：播放列表 | 添加目录 | 设置 | 刷新 | 全屏 ----- */
+.player .player-corner {
+  position: absolute;
+  right: 12px; left: auto; top: 24px;   /* 标注 config main [931.8,24 266.2×36]，右缘 1198 距 1210 右 12px */
+  display: flex;
+  gap: 20.8px;   /* 标注 5 图标总宽 266.2 - 图标和 183 = 4×20.8 */
+  z-index: 2;
+}
+.player .corner-btn {
+  border: none;
+  background: transparent;   /* 副本 corner-btn 透明背景（裸图标，无背景块） */
+  border-radius: 8px;   /* 副本 corner cornerRadius=8 */
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.06s ease;
+}
+.player .corner-btn:hover { background: rgba(255, 255, 255, 0.14); }
+.player .corner-btn:active { transform: translateY(1px); }
+.player .corner-btn.active { background: rgba(255, 255, 255, 0.14); }   /* 保留功能激活指示，轻量 */
+/* 5 图标按副本标注尺寸（宽×高）：playlist 40×38 / folderAdd 36×34 / config 32×36 / refresh 36×36 / fullscreen 39×34 */
+.player .corner-btn .ic { display: block; }
+.player #playlistBtn .ic { width: 40px; height: 38px; }
+.player #folderAddBtn .ic { width: 36px; height: 34px; }
+.player #vizGear .ic { width: 32px; height: 36px; }
+.player #refreshTopBtn .ic { width: 36px; height: 36px; }
+.player #fullscreenBtn .ic { width: 39px; height: 34px; }
+
+/* ----- 批次进度（指示条，不可拖拽） ----- */
+.player .bar.batch { cursor: default; }
+.player .bar.batch::before { content: none; }
+.player .bar.batch .fill { width: 0%; background: var(--pbatch); }
+
+/* ----- 右侧音量区 ----- */
+.player .volume {
+  position: absolute; right: 20px; left: auto; top: 32px;   /* 标注 音量控件 [1148,78 59×253]：右缘1207距1210右3，竖线 [1150,79] 高252 */
+  width: 68px; height: 281px;
+}
+.player .volume::before {
+  /* 竖直分割线：副本 LINE [1607,78 2×252] 白@0.2×node0.5，strokeWeight2 */
+  content: "";
+  position: absolute;
+  left: 28px; top: 47px;   /* 1607,78 相对 volume(1579,31) */
+  height: 252px;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.2);
+  opacity: 0.5;
+}
+.player .vol-stack { position: absolute; inset: 0; }
+/* 音量数字：标注 TEXT「100」相对音量控件 (13.49,0.25) 35×24，fs20 Inter w400 #FFFFFF。
+   三位定宽 + tabular-nums，1~3 位数切换时始终居中且不左右抖动。 */
+.player .volume .vol-value {
+  position: absolute;
+  left: 57px; top: 39px;            /* 新基准：底边 63，距 100% 时滑块按钮顶（轨道顶 78 − 半径 8 = 70）留 7px；整体与左侧「歌曲信息行」同一视觉带 */
+  transform: translateX(-50%);
+  width: 35px; height: 24px;
+  line-height: 24px;
+  text-align: center;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 20px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  color: #ffffff;
+  pointer-events: none;
+  user-select: none;
+}
+/* 滚轮调节音量时的百分比气泡（浮在轨道左侧，不占布局） */
+.player .volume .vol-tip {
+  position: absolute;
+  right: 52px;
+  top: 128px;
+  padding: 3px 7px;
+  border-radius: 4px;
+  background: rgba(8, 20, 46, .82);
+  color: #BFE1FF;
+  font: 600 12px/1.1 Inter, system-ui, sans-serif;
+  letter-spacing: .02em;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity .18s ease, transform .18s ease;
+}
+.player .volume .vol-tip.on { opacity: 1; transform: translateY(0); }
+.player .vol-hit {
+  position: absolute; left: 40px; top: 78px;   /* 新基准：缩短 down bar 8px，让 100% 时滑块按钮顶（轨道顶 −8）与左侧歌词第一行顶部对齐 */
+  width: 34px; height: 172px;
+  cursor: pointer;
+  touch-action: none;
+}
+.player .vol-track {
+  position: absolute;
+  left: 15px; top: 0;   /* 副本 down bar 相对 player 1634,101 = vol-hit(40,70)+15,0 */
+  width: 4px;
+  height: 172px;   /* 与 vol-hit 同高：滑块满格位置就由这个长度决定 */
+  border-radius: 16px;   /* 副本 down bar r=16 */
+  background: var(--ptrack);
+  backdrop-filter: blur(8px);   /* 副本 down bar GLASS radius=8（细条小面积，开销小） */
+  -webkit-backdrop-filter: blur(8px);
+}
+.player .vol-fill {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 10%; /* 初始音量 10%，避免惊扰（JS 初始化会同步覆盖） */
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--pslider) 0%, var(--pslider) 100%);
+  opacity: 0.85;
+}
+.player .vol-thumb {
+  position: absolute;
+  left: 50%;
+  top: 90%; /* 与初始音量 10% 对应，由 JS 按真实音量驱动 */
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--pslider);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 8px rgba(17, 253, 255, 0.7);
+  pointer-events: none;
+}
+.player .vol-icon { width: 30px; height: 29px; opacity: 0.9; }   /* 副本 Voice icon [1621,300 30×29] */
+.player .mute-btn {
+  position: absolute; left: 42px; top: 269px;   /* 副本 Voice icon [1621,300] 相对 volume(1579,31) */
+  width: 30px; height: 29px;
+  border: none;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+.player .mute-btn:hover { background: rgba(255, 255, 255, 0.12); }
+.player .mute-btn.muted { opacity: 0.55; }
+
+/* 播放窗口左右缩放手柄（min 1160 / max 2560） */
+.player .resize-l, .player .resize-r {
+  position: absolute; top: 0; bottom: 0; width: 12px;
+  cursor: ew-resize; z-index: 5; touch-action: none;
+}
+.player .resize-l { left: 0; }
+.player .resize-r { right: 0; }
+.player .resize-l:hover, .player .resize-r:hover { background: rgba(255, 255, 255, 0.06); }
+
+/* 轮播完成态覆盖层（主方案）：覆盖整个播放器，海报半透明可见，中央统计 + 三出口 */
+.round-done-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 60;                       /* 高于播放器内部控件（poster/body/volume/corner） */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 15, 15, 0.32); /* 半透明：透过可见海报轮廓，不突兀消失 */
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.round-done-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  max-width: 80%;
+  text-align: center;
+}
+.rd-badge {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #ffffff;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+.rd-stats {
+  font-size: 18px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.92);
+  letter-spacing: 0.02em;
+}
+.rd-actions {
+  display: flex;
+  gap: 14px;
+  margin-top: 6px;
+}
+/* 覆盖 .player .btn 的等宽缩放，恢复为固定三列按钮 */
+.round-done-overlay .btn {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 132px;
+  height: 44px;
+  padding: 0 22px;
+  border-radius: 10px;
+  border: 2px solid rgba(107, 126, 176, 0.35);
+  background: linear-gradient(0deg, rgba(112, 131, 181, 0.28) 0%, rgba(79, 98, 146, 0.28) 100%);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, filter 0.15s ease;
+}
+.round-done-overlay .btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.round-done-overlay .btn.primary:hover:not(:disabled) { filter: brightness(1.1); }
+.round-done-overlay .btn:hover:not(:disabled) { border-color: var(--accent); }
+.round-done-overlay .btn.ghost {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.85);
+  box-shadow: none;
+}
+.round-done-overlay .btn.ghost:hover:not(:disabled) { border-color: #fff; color: #fff; }
+
+
+/* ---------------- 悬停说明气泡（工具栏按钮用） ----------------
+   常驻小字太挤、与面板排版不搭，改成鼠标停留后浮出的一句说明。 */
+.hover-tip {
+  position: fixed; z-index: 60;
+  max-width: 248px; padding: 7px 10px;
+  border-radius: 4px;
+  background: rgba(16,20,34,0.97);
+  border: 1px solid rgba(120,140,220,0.38);
+  box-shadow: 0 10px 26px rgba(0,0,0,.55);
+  color: rgba(255,255,255,.86);
+  font-size: 12px; line-height: 1.55; letter-spacing: .04em;
+  pointer-events: none;
+  opacity: 1; transition: opacity .14s ease;
+}
+.hover-tip.hidden { display: none; }

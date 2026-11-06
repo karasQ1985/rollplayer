@@ -1,0 +1,29 @@
+{
+  "name": "rollplay-music-player",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "媒体库轮播播放器：本地/局域网媒体库分批随机播放，紫蓝玻璃拟态黑胶界面",
+  "license": "MIT",
+  "author": "KarasQ1985",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/karasQ1985/rollplayer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/karasQ1985/rollplayer/issues"
+  },
+  "homepage": "https://github.com/karasQ1985/rollplayer#readme",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "check": "node --check server.mjs && node --check meta-worker.mjs && node --check meta-store.mjs && node --check public/app.js && node --check public/modules/playback.js && node --check public/modules/scheduler.js && node --check public/modules/store.js && node --check public/modules/visualizer.js",
+    "test:scheduler": "node tools/scheduler_test.mjs",
+    "test:meta": "node tools/test-meta.mjs"
+  },
+  "dependencies": {
+    "music-metadata": "^10.6.7"
+  }
+}

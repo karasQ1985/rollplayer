@@ -1,0 +1,36 @@
+# ---- 依赖与运行时 ----
+node_modules/
+node/
+*.log
+
+# ---- 本地运行产物（绝不入库） ----
+# 元数据本地库（SQLite）、封面缓存、单实例锁
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# ---- 调试/基准产物 ----
+tools/scratch/
+tools/*.log
+tools/bench*.json
+tools/*_status.json
+tools/scan*.json
+tools/files_probe.json
+tools/rid.txt
+tools/lockinfo.txt
+tools/*.tmp
+
+# ---- 设计标注导出（本地参考，94MB，不入库） ----
+UI putout/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 打包产物 ----
+dist/
+*.zip

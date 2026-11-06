@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>媒体库轮播播放器</title>
+<link rel="stylesheet" href="style.css?v=20261108y">
+</head>
+<body>
+
+<!-- SVG 图标库（内联 sprite，fill=currentColor 随主题着色） -->
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <symbol id="i-refresh" viewBox="0 0 1024 1024"><path fill="currentColor" d="M922.2 582.7c-16.2 95.5-65.9 182.9-140 246.1-36.8 31.3-78.2 55.8-123.3 72.7C612.3 919.1 563.2 928 513 928c-70.6 0-140.3-18-201.6-52.2-49.7-27.6-93.4-65.5-127.9-110.6l-85.3 56.7-0.2-258.6 238.4 100.3-86.2 57.3C313.5 801 409.6 848 513 848c164 0 302.9-117.2 330.3-278.6l78.9 13.3zM689.6 362.3l86.1-57.3C712.5 224.8 617 178 513 178c-163.3 0-302 116.5-330 277.1l-78.8-13.7c16.6-95.1 66.4-182 140.4-244.8 36.7-31.2 78.1-55.5 123-72.3C414 106.8 463 98 513 98c72.7 0 144.2 19.1 206.8 55.1 47.6 27.4 89.3 64.1 122.7 107.5l85.4-56.8 0.1 258.7-238.4-100.2z"/></symbol>
+</svg>
+
+<!-- 音效可视化背景（Web Audio Analyser + Canvas 2D，随播放音频波动） -->
+<canvas id="viz" class="viz-bg"></canvas>
+
+<header id="hd">
+  <!-- 文字信息层：播放开始后随机 0~3s 向左滑出淡出 -->
+  <div class="hd-info">
+    <h1 class="hd-title">Roll Play播放机</h1>
+    <div id="roundInfo" class="hd-round">未开始</div>
+    <div class="hd-progress"><span class="hd-k">本轮</span><span id="roundProgressText" class="hd-n">—</span></div>
+  </div>
+  <!-- 歌词层：上行原文 / 下行译文（小 4 号），从右往左滚过 -->
+  <div id="hdLyrics" class="hd-lyrics" aria-hidden="true">
+    <div class="hd-lyric-row hd-lyric-main"><span id="hdLyricMain" class="hd-lyric-track"></span></div>
+    <div class="hd-lyric-row hd-lyric-sub"><span id="hdLyricSub" class="hd-lyric-track"></span></div>
+  </div>
+  <div class="hd-bar"><div id="roundProgressBar" class="progress-fill" style="width:0%"></div></div>
+</header>
+
+<main>
+  <!-- 左栏：媒体库管理（抽屉，1:1 复刻 panel_add_directory 480×674，收起时左移） -->
+  <aside id="libDrawer" class="library-panel">
+    <!-- 标题栏底色 -->
+    <div class="titlebar"></div>
+    <h2 class="t-title">媒体库</h2>
+    <!-- 收起（✕ 保留元素，视觉隐藏；收起靠鼠标离开+图钉） -->
+    <button id="libClose" class="drawer-toggle" title="收起" hidden>✕</button>
+    <!-- 右上：图钉在文件夹按钮左侧等距 -->
+    <button id="libPin" class="drawer-pin icon-pin" title="固定侧栏（常驻显示）">
+      <svg width="20" height="20" viewBox="5 5 22 22" fill="none" aria-hidden="true">
+        <path d="M19.7973 6.15797C20.0201 6.25402 20.2226 6.39111 20.3941 6.56202L25.4369 11.5822C25.6578 11.8022 25.8216 12.0723 25.914 12.3693C26.0064 12.6663 26.0247 12.9812 25.9673 13.2868C25.9099 13.5924 25.7786 13.8795 25.5846 14.1233C25.3907 14.3672 25.14 14.5603 24.8542 14.6862L23.0673 15.4732L19.7151 18.8109L19.4494 22.4824C19.4228 22.8484 19.291 23.1992 19.0697 23.4929C18.8484 23.7866 18.5469 24.0109 18.201 24.139C17.8552 24.2671 17.4796 24.2937 17.119 24.2156C16.7584 24.1374 16.428 23.9579 16.1671 23.6983L12.9118 20.4577L7.36451 26L6 24.6487L11.5505 19.1032L8.18284 15.7515C7.92237 15.4923 7.74219 15.1641 7.6637 14.806C7.58521 14.4479 7.6117 14.0749 7.74004 13.7313C7.86837 13.3878 8.09315 13.088 8.38769 12.8678C8.68223 12.6475 9.03415 12.5159 9.40166 12.4886L13.1987 12.2065L16.4912 8.92817L17.2646 7.15371C17.3651 6.92293 17.5104 6.7141 17.6921 6.53916C17.8738 6.36421 18.0883 6.22658 18.3235 6.13411C18.5587 6.04164 18.8099 5.99616 19.0628 6.00025C19.3156 6.00435 19.5652 6.05794 19.7973 6.15797ZM19.0316 7.9152L18.1125 10.0235L14.0562 14.0639L9.54414 14.3977L17.529 22.3445L17.8461 17.962L21.9589 13.8667L24.075 12.9347L19.0316 7.9152Z" fill="currentColor"/>
+      </svg>
+    </button>
+    <!-- folder 图标 = 浏览 -->
+    <button id="browseBtn" class="icon-foldadd" title="浏览选择目录" aria-label="浏览选择目录">
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+        <path d="M24.6709 10.6968H19.9459L18.9914 8.13667C18.9455 8.02048 18.8647 7.92174 18.7602 7.85439C18.6557 7.78704 18.5329 7.75448 18.4091 7.76131H8.32909C8.17466 7.76131 8.02656 7.82316 7.91736 7.93327C7.80816 8.04337 7.74682 8.1927 7.74682 8.34841V23.642C7.74928 23.7969 7.81141 23.9448 7.92008 24.0544C8.02875 24.1639 8.17543 24.2266 8.32909 24.2291H24.6709C24.8246 24.2266 24.9712 24.1639 25.0799 24.0544C25.1886 23.9448 25.2507 23.7969 25.2532 23.642V11.2936C25.2532 11.1378 25.1918 10.9885 25.0826 10.8784C24.9734 10.7683 24.8253 10.7064 24.6709 10.7064V10.6968ZM21.1391 8.93551H24.6709C25.2895 8.93806 25.8819 9.18762 26.3184 9.62956C26.7549 10.0715 27 10.6698 27 11.2936V23.642C27 24.2657 26.7549 24.864 26.3184 25.306C25.8819 25.7479 25.2895 25.9975 24.6709 26H8.32909C7.7105 25.9975 7.11811 25.7479 6.68159 25.306C6.24508 24.864 5.99999 24.2657 6 23.642V8.34841C6 7.72557 6.24539 7.12825 6.68217 6.68783C7.11896 6.24742 7.71138 6 8.32909 6H18.4091C18.8782 6.00112 19.3361 6.14506 19.7227 6.41297C20.1093 6.68087 20.4067 7.06026 20.5759 7.50144L21.1391 8.93551Z" fill="white"/>
+        <path d="M17.0406 14.9338H20.0723C20.3262 14.9577 20.5619 15.0728 20.7335 15.2568C20.905 15.4407 21 15.6803 21 15.9288C21 16.1773 20.905 16.4169 20.7335 16.6009C20.5619 16.7848 20.3262 16.9 20.0723 16.9238H17.0406V19.9043C17.0544 20.043 17.0382 20.183 16.9931 20.3153C16.948 20.4476 16.8751 20.5692 16.7788 20.6724C16.6826 20.7756 16.5653 20.858 16.4345 20.9144C16.3036 20.9709 16.1621 21 16.019 21C15.8759 21 15.7344 20.9709 15.6035 20.9144C15.4727 20.858 15.3554 20.7756 15.2592 20.6724C15.163 20.5692 15.09 20.4476 15.0449 20.3153C14.9998 20.183 14.9836 20.043 14.9974 19.9043V16.9238H11.9277C11.6738 16.9 11.4381 16.7848 11.2665 16.6009C11.095 16.4169 11 16.1773 11 15.9288C11 15.6803 11.095 15.4407 11.2665 15.2568C11.4381 15.0728 11.6738 14.9577 11.9277 14.9338H14.9974V11.9904C14.9974 11.7277 15.1045 11.4758 15.2952 11.2901C15.4859 11.1043 15.7446 11 16.0143 11C16.2839 11 16.5426 11.1043 16.7333 11.2901C16.924 11.4758 17.0311 11.7277 17.0311 11.9904L17.0406 14.9338Z" fill="white"/>
+      </svg>
+    </button>
+    <!-- 加号图标 = 添加 -->
+    <button id="addDirBtn" class="icon-circle" title="添加目录" aria-label="添加目录">
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+        <path d="M16 26C14.0222 26 12.0888 25.4135 10.4443 24.3147C8.79981 23.2159 7.51809 21.6541 6.76121 19.8268C6.00433 17.9996 5.8063 15.9889 6.19215 14.0491C6.578 12.1093 7.53041 10.3275 8.92894 8.92894C10.3275 7.53041 12.1093 6.578 14.0491 6.19215C15.9889 5.8063 17.9996 6.00433 19.8268 6.76121C21.6541 7.51809 23.2159 8.79981 24.3147 10.4443C25.4135 12.0888 26 14.0222 26 16C26 17.3132 25.7413 18.6136 25.2388 19.8268C24.7362 21.0401 23.9997 22.1425 23.0711 23.0711C22.1425 23.9997 21.0401 24.7362 19.8268 25.2388C18.6136 25.7413 17.3132 26 16 26ZM21.7333 16C21.7333 15.779 21.6455 15.567 21.4893 15.4107C21.333 15.2545 21.121 15.1667 20.9 15.1667H16.8667V11.0778C16.8667 10.9683 16.8451 10.86 16.8032 10.7589C16.7614 10.6578 16.7 10.5659 16.6226 10.4885C16.5452 10.4111 16.4533 10.3498 16.3522 10.3079C16.2511 10.266 16.1428 10.2444 16.0333 10.2444H15.9667C15.7457 10.2444 15.5337 10.3322 15.3774 10.4885C15.2211 10.6448 15.1333 10.8568 15.1333 11.0778V15.1333H11.1C10.879 15.1333 10.667 15.2211 10.5107 15.3774C10.3545 15.5337 10.2667 15.7457 10.2667 15.9667V16.0333C10.2667 16.2543 10.3545 16.4663 10.5107 16.6226C10.667 16.7789 10.879 16.8667 11.1 16.8667H15.1333V20.9C15.1333 21.0094 15.1549 21.1178 15.1968 21.2189C15.2386 21.32 15.3 21.4119 15.3774 21.4893C15.4548 21.5666 15.5467 21.628 15.6478 21.6699C15.7489 21.7118 15.8572 21.7333 15.9667 21.7333H16.0444C16.1539 21.7333 16.2622 21.7118 16.3633 21.6699C16.4645 21.628 16.5563 21.5666 16.6337 21.4893C16.7111 21.4119 16.7725 21.32 16.8143 21.2189C16.8562 21.1178 16.8778 21.0094 16.8778 20.9V16.8667H20.8778C21.0988 16.8667 21.3108 16.7789 21.467 16.6226C21.6233 16.4663 21.7111 16.2543 21.7111 16.0333L21.7333 16Z" fill="#fff"/>
+      </svg>
+    </button>
+    <!-- 输入框 -->
+    <input id="dirInput" class="dir-input" type="text" spellcheck="false"
+           placeholder="直接输入地址Enter键录入">
+    <ul id="dirList" class="dir-list"></ul>
+    <!-- 目录列表下方的折叠工具栏：收起时只露一行标题，展开后抽屉整体向下延长 -->
+    <div id="dirTools" class="dir-tools">
+      <button id="dirToolsHead" class="dir-tools-head" type="button" aria-expanded="false">
+        <span class="dt-title">整理与清理</span>
+        <span class="dt-chev" aria-hidden="true"></span>
+      </button>
+      <div class="dir-tools-body">
+        <button id="toolClearScans" class="tools-btn" type="button">清空扫描记录</button>
+        <button id="toolClearDirs" class="tools-btn is-danger" type="button">清空目录列表</button>
+      </div>
+    </div>
+    <!-- 分隔线 -->
+    <div class="divider d1"></div>
+    <!-- 3 按钮等距（标注 button bar [20,394 436×43]）：开始扫描 / 开始轮播 / 恢复播放 -->
+    <button id="scanBtn" class="scanbtn" disabled><span class="lbl">开始扫描</span></button>
+    <button id="startPlayBtn" class="scanbtn playbtn" disabled><span class="lbl">开始轮播</span></button>
+    <button id="resumeBtn" class="scanbtn resumebtn" hidden><span class="lbl">恢复播放</span></button>
+    <div id="scanProgress" class="scan-progress hidden">
+      <div class="progress-bar thin"><div id="scanProgressBar" class="progress-fill"></div></div>
+      <div id="scanProgressText" class="muted small"></div>
+    </div>
+    <!-- 统计 -->
+    <div class="pool-stats">
+      <div class="stat-row">音频总数 <b id="poolTotal">—</b></div>
+      <div class="stat-row">目录数 <b id="dirCount">—</b></div>
+      <div class="stat-row">格式分布 <span id="extDist" class="ext-dist">—</span></div>
+    </div>
+    <!-- 分隔线 -->
+    <div class="divider d2"></div>
+    <!-- 排序 -->
+    <div class="seq-wrap">
+      <label class="seq-label"><input type="checkbox" id="seqMode"> 默认排序顺序进行播放</label>
+      <div class="seq-hint">(不随机，按目录/文件名顺序)</div>
+    </div>
+    <div id="planBox" class="plan-box hidden"></div>
+    <div id="restoreBanner" class="restore-banner hidden"></div>
+    <!-- 信息栏顶部分隔线（标注 Line 4 real 660） -->
+    <div class="divider d3"></div>
+    <!-- 底部状态信息栏（标注文本框 [20,660 440×110]，文字区 [20,670 440×100] 综合状态） -->
+    <div id="drawerInfo" class="drawer-info"></div>
+  </aside>
+
+  <!-- 中区：播放器 -->
+  <section class="player-panel">
+    <div id="playerPlaceholder" class="player-placeholder hidden">
+      扫描并确认媒体库后开始播放
+    </div>
+    <div id="player" class="player">
+      <!-- 左侧海报（封面位：有封面显示封面，无封面显示占位） -->
+      <aside class="poster">
+        <div class="poster-box" id="coverBox">
+          <img id="coverBlur" class="cover-blur" alt="" hidden>
+          <img id="coverImg" alt="" hidden>
+          <div id="coverPlaceholder" class="poster-fallback">
+            <div class="disc" aria-hidden="true">
+              <img class="disc-plate" src="assets/record_disc_01.svg?v=20261106" alt="" onerror="this.style.display='none'">
+              <img class="disc-music" src="assets/music.svg?v=20261106" alt="" onerror="this.style.display='none'">
+              <img class="disc-arm" src="assets/record_disc_02.svg?v=20261106" alt="" onerror="this.style.display='none'">
+            </div>
+            <span class="poster-label">POSTER IMAGE</span>
+          </div>
+        </div>
+      </aside>
+      <!-- 封面层：封面加载完成后从唱片底下向右滑出 310px，露出真实封面 -->
+      <div id="coverReveal" class="cover-reveal" aria-hidden="true">
+        <img id="coverRevealImg" alt="" hidden>
+        <span class="cover-reveal-label">IMAGE</span>
+      </div>
+      <!-- 中间内容区 -->
+      <div class="player-body">
+        <div class="track-head">
+          <div class="meta">
+            <div id="nowTitle" class="song-title" title="RollPlay播放器">欢迎使用RollPlay播放器</div>
+          </div>
+        </div>
+
+        <!-- 右上角功能按钮（Music Player.svg 顺序）：播放列表 | 添加目录 | 设置 | 刷新 | 全屏 -->
+        <div class="player-corner">
+          <button id="playlistBtn" class="corner-btn" title="显示播放列表" aria-label="播放列表">
+            <svg class="ic" viewBox="0 0 36 35" fill="none" aria-hidden="true">
+              <path fill="currentColor" d="M33.4321 18.878H10.6379C8.28072 18.878 8.28072 15.3235 10.6379 15.3235H33.4321C35.7893 15.3235 35.7893 18.878 33.4321 18.878ZM33.4173 33.5301H10.6231C8.26591 33.5301 8.26591 29.9757 10.6231 29.9757H33.4173C35.7745 29.9757 35.7745 33.5301 33.4173 33.5301ZM33.4173 4.26532H10.6231C8.26591 4.26532 8.26591 0.710886 10.6231 0.710886H33.4173C35.7745 0.710886 35.7745 4.26532 33.4173 4.26532ZM2.51429 5.05519C1.12569 5.05519 0 3.92354 0 2.52759C0 1.13165 1.12569 0 2.51429 0C3.90288 0 5.02857 1.13165 5.02857 2.52759C5.02857 3.92354 3.90288 5.05519 2.51429 5.05519ZM2.51429 34.32C1.12569 34.32 0 33.1883 0 31.7924C0 30.3965 1.12569 29.2648 2.51429 29.2648C3.90288 29.2648 5.02857 30.3965 5.02857 31.7924C5.02857 33.1883 3.90288 34.32 2.51429 34.32ZM2.51429 19.6678C1.12569 19.6678 0 18.5362 0 17.1403C0 15.7443 1.12569 14.6127 2.51429 14.6127C3.90288 14.6127 5.02857 15.7443 5.02857 17.1403C5.02857 18.5362 3.90288 19.6678 2.51429 19.6678Z"/>
+            </svg>
+          </button>
+          <button id="folderAddBtn" class="corner-btn" title="添加目录" aria-label="添加目录">
+            <svg class="ic" viewBox="0 0 36 34" fill="none" aria-hidden="true">
+              <path fill="currentColor" d="M32.0073 7.98546H23.9073L22.2709 3.63273C22.1924 3.43519 22.0538 3.26731 21.8746 3.1528C21.6955 3.03829 21.485 2.98293 21.2727 2.99455H3.99273C3.72799 2.99455 3.4741 3.09971 3.28691 3.28691C3.09971 3.4741 2.99455 3.72799 2.99455 3.99273V29.9945C2.99876 30.258 3.10528 30.5094 3.29157 30.6957C3.47786 30.882 3.72931 30.9885 3.99273 30.9927H32.0073C32.2707 30.9885 32.5221 30.882 32.7084 30.6957C32.8947 30.5094 33.0012 30.258 33.0055 29.9945V9C33.0055 8.73527 32.9003 8.48137 32.7131 8.29418C32.5259 8.10698 32.272 8.00182 32.0073 8.00182V7.98546ZM25.9527 4.99091H32.0073C33.0677 4.99524 34.0832 5.41953 34.8316 6.17091C35.5799 6.9223 36 7.93955 36 9V29.9945C36 31.055 35.5799 32.0723 34.8316 32.8236C34.0832 33.575 33.0677 33.9993 32.0073 34.0036H3.99273C2.93229 33.9993 1.91676 33.575 1.16844 32.8236C0.420129 32.0723 -8.84344e-06 31.055 1.3961e-10 29.9945V3.99273C1.39609e-10 2.93379 0.420661 1.91822 1.16944 1.16944C1.91822 0.420661 2.93379 1.01717e-08 3.99273 0L21.2727 0C22.0769 0.00190779 22.8618 0.246629 23.5246 0.702118C24.1874 1.15761 24.6972 1.80263 24.9873 2.55273L25.9527 4.99091Z"/>
+              <path fill="currentColor" d="M19.8731 15.0827H25.3301C25.7872 15.1257 26.2115 15.3329 26.5202 15.6641C26.829 15.9952 27 16.4264 27 16.8737C27 17.321 26.829 17.7522 26.5202 18.0834C26.2115 18.4145 25.7872 18.6218 25.3301 18.6647H19.8731V24.0295C19.8979 24.2792 19.8688 24.5312 19.7876 24.7693C19.7065 25.0074 19.5751 25.2264 19.4019 25.4121C19.2288 25.5978 19.0176 25.7463 18.7821 25.8478C18.5465 25.9494 18.2918 26.0018 18.0342 26.0018C17.7766 26.0018 17.5219 25.9494 17.2863 25.8478C17.0508 25.7463 16.8397 25.5978 16.6665 25.4121C16.4933 25.2264 16.362 25.0074 16.2808 24.7693C16.1997 24.5312 16.1705 24.2792 16.1953 24.0295V18.6647H10.6699C10.2128 18.6218 9.78851 18.4145 9.47978 18.0834C9.17104 17.7522 9 17.321 9 16.8737C9 16.4264 9.17104 15.9952 9.47978 15.6641C9.78851 15.3329 10.2128 15.1257 10.6699 15.0827H16.1953V9.78454C16.1953 9.31173 16.3881 8.8583 16.7314 8.52397C17.0746 8.18965 17.5402 8.00183 18.0257 8.00183C18.5111 8.00183 18.9767 8.18965 19.3199 8.52397C19.6632 8.8583 19.856 9.31173 19.856 9.78454L19.8731 15.0827Z"/>
+            </svg>
+          </button>
+          <button id="vizGear" class="corner-btn" title="频谱设置" aria-label="设置">
+            <svg class="ic" viewBox="0 0 32 36" fill="none" aria-hidden="true">
+              <path fill="currentColor" d="M14.3437 0.444711C14.8473 0.153375 15.4185 0 16 0C16.5815 0 17.1527 0.153375 17.6563 0.444711L30.3437 7.78549C30.8473 8.07681 31.2654 8.49583 31.5562 9.00042C31.8469 9.50501 32 10.0774 32 10.6601V25.3399C32 25.9226 31.8469 26.495 31.5562 26.9996C31.2654 27.5042 30.8473 27.9232 30.3437 28.2145L17.6563 35.5553C17.1527 35.8466 16.5815 36 16 36C15.4185 36 14.8473 35.8466 14.3437 35.5553L1.65632 28.2145C1.15274 27.9232 0.734573 27.5042 0.443829 26.9996C0.153086 26.495 1.47695e-05 25.9226 0 25.3399V10.6601C1.47695e-05 10.0774 0.153086 9.50501 0.443829 9.00042C0.734573 8.49583 1.15274 8.07681 1.65632 7.78549L14.3437 0.444711ZM16 3.31928L3.31263 10.6601V25.3399L16 32.6807L28.6874 25.3399V10.6601L16 3.31928ZM16 11.3613C17.7571 11.3613 19.4423 12.0607 20.6848 13.3057C21.9272 14.5507 22.6253 16.2393 22.6253 18C22.6253 19.7607 21.9272 21.4493 20.6848 22.6943C19.4423 23.9393 17.7571 24.6387 16 24.6387C14.2429 24.6387 12.5577 23.9393 11.3152 22.6943C10.0728 21.4493 9.37474 19.7607 9.37474 18C9.37474 16.2393 10.0728 14.5507 11.3152 13.3057C12.5577 12.0607 14.2429 11.3613 16 11.3613ZM16 14.6806C15.565 14.6806 15.1342 14.7665 14.7323 14.9333C14.3304 15.1001 13.9652 15.3446 13.6576 15.6529C13.35 15.9611 13.106 16.327 12.9395 16.7297C12.7731 17.1325 12.6874 17.5641 12.6874 18C12.6874 18.4359 12.7731 18.8675 12.9395 19.2703C13.106 19.673 13.35 20.0389 13.6576 20.3471C13.9652 20.6554 14.3304 20.8999 14.7323 21.0667C15.1342 21.2335 15.565 21.3194 16 21.3194C16.8786 21.3194 17.7211 20.9697 18.3424 20.3471C18.9636 19.7246 19.3126 18.8804 19.3126 18C19.3126 17.1197 18.9636 16.2754 18.3424 15.6529C17.7211 15.0304 16.8786 14.6806 16 14.6806Z"/>
+            </svg>
+          </button>
+          <button id="refreshTopBtn" class="corner-btn" title="重新扫描媒体库" aria-label="刷新">
+            <svg class="ic" viewBox="0 0 36 36" fill="none" aria-hidden="true">
+              <path fill="currentColor" d="M35.7484 21.0231C35.0458 25.1653 32.8901 28.9561 29.6761 31.6973C28.08 33.0549 26.2843 34.1176 24.3282 34.8506C22.307 35.614 20.1774 36 18 36C14.9378 36 11.9147 35.2193 9.2559 33.7359C7.10024 32.5388 5.20482 30.8949 3.70843 28.9388L0.00867457 31.3981L0 20.1817L10.3402 24.532L6.60145 27.0174C9.34699 30.4916 13.5152 32.5301 18 32.5301C25.1133 32.5301 31.1378 27.4467 32.3263 20.4463L35.7484 21.0231ZM25.6598 11.4636L29.3942 8.97831C26.653 5.49976 22.5108 3.46988 18 3.46988C10.9171 3.46988 4.90121 8.52289 3.68675 15.4887L0.268916 14.8945C0.988916 10.7696 3.14892 7.00048 6.35855 4.27663C7.95036 2.92337 9.74602 1.8694 11.6935 1.14072C13.706 0.381687 15.8313 0 18 0C21.1533 0 24.2545 0.828434 26.9696 2.38988C29.0342 3.57831 30.8429 5.17012 32.2916 7.05253L35.9957 4.58892L36 15.8096L25.6598 11.4636Z"/>
+            </svg>
+          </button>
+          <button id="fullscreenBtn" class="corner-btn" title="全屏模式" aria-label="全屏">
+            <svg class="ic" viewBox="0 0 39 35" fill="none" aria-hidden="true">
+              <path fill="currentColor" d="M0 32.12V8.66C0 7.56 0.9 6.66 2 6.66H6.66V2C6.66 0.9 7.56 0 8.66 0H36.58C37.68 0 38.58 0.9 38.58 2V25.46C38.58 26.56 37.68 27.46 36.58 27.46H31.92V32.12C31.92 33.22 31.02 34.12 29.92 34.12H2C0.88 34.12 0 33.24 0 32.12ZM28.88 29.1V11.68C28.88 10.58 27.98 9.68 26.88 9.68H5.02C3.92 9.68 3.02 10.58 3.02 11.68V29.1C3.02 30.2 3.92 31.1 5.02 31.1H26.88C27.98 31.1 28.88 30.2 28.88 29.1ZM35.54 22.44V5.02C35.54 3.92 34.64 3.02 33.54 3.02H11.68C10.58 3.02 9.68 3.92 9.68 5.02V6.66H29.9C31 6.66 31.9 7.56 31.9 8.66V24.44H33.54C34.66 24.44 35.54 23.54 35.54 22.44Z"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- 分割装饰线（line_divider-1 图元）：副本 LINE b 纯白 stroke op0.2 strokeWeight2 -->
+        <div class="divider" aria-hidden="true">
+          <svg viewBox="0 0 906 2" preserveAspectRatio="none" fill="none">
+            <path d="M0 1H906" stroke-width="2" stroke="#ffffff" stroke-opacity="0.2"/>
+          </svg>
+        </div>
+
+        <!-- 目录与歌曲信息（分割线下方，超长自动省略） -->
+        <div class="track-sub">
+          <div id="nowMeta" class="album">导入媒体库并扫描后，随机轮播开始</div>
+        </div>
+
+        <!-- 歌词（两行滚动：上行=当前句，下行=下一句；当前句逐字高亮+低频呼吸） -->
+        <div id="lyricsLine" class="lyrics-line hidden" title="歌词">
+          <div id="lyricStack" class="lyric-stack">
+            <div id="lyricRowCur" class="lyric-row cur"><span class="lyric-inner"></span></div>
+            <div id="lyricRowNext" class="lyric-row next"><span class="lyric-inner"></span></div>
+          </div>
+        </div>
+
+        <!-- 播放进度：时间文本在条上方，条全宽 -->
+        <div class="progress-block playback">
+          <div class="bar-texts">
+            <span id="curTime" class="time">0:00</span>
+            <span id="totalTime" class="time">0:00</span>
+          </div>
+          <div class="bar play" id="seekBar">
+            <div class="fill" id="seekFill"></div>
+            <div class="thumb" id="seekThumb"></div>
+          </div>
+        </div>
+
+        <div class="buttons">
+          <button id="prevBtn" class="btn" disabled title="上一首">
+            <svg class="ic" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+              <path d="M2.02878 9.59111L14.2011 16.6916C15.0802 17.2326 16.2298 16.5564 16.2298 15.542V1.34098C16.2298 0.326618 15.0802 -0.349622 14.2011 0.19137L2.02878 7.29189C1.14967 7.76526 1.14967 9.11774 2.02878 9.59111Z" fill="white"/>
+              <path d="M5.72205e-05 13.4457C5.72205e-05 14.3924 0.879169 15.2039 2.02878 15.2039C3.17839 15.2039 4.0575 14.3924 4.0575 13.4457V3.43732C4.0575 2.49059 3.17839 1.6791 2.02878 1.6791C0.879169 1.6791 5.72205e-05 2.49059 5.72205e-05 3.43732V13.4457Z" fill="white"/>
+            </svg>
+          </button>
+          <button id="playPauseBtn" class="btn" disabled title="播放 / 暂停">
+            <svg class="ic ic-play" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+              <path d="M14.201 9.59111L2.02872 16.6916C1.14961 17.2326 0 16.5564 0 15.542L0 1.34098C0 0.326618 1.14961 -0.349622 2.02872 0.19137L14.201 7.29189C15.0802 7.76526 15.0802 9.11774 14.201 9.59111Z" fill="white"/>
+            </svg>
+            <svg class="ic ic-pause" viewBox="0 0 17 17" fill="none" aria-hidden="true" hidden>
+              <path d="M5 1.5C5 0.671573 5.67157 0 6.5 0C7.32843 0 8 0.671573 8 1.5V15.5C8 16.3284 7.32843 17 6.5 17C5.67157 17 5 16.3284 5 15.5V1.5Z" fill="white"/>
+              <path d="M9 1.5C9 0.671573 9.67157 0 10.5 0C11.3284 0 12 0.671573 12 1.5V15.5C12 16.3284 11.3284 17 10.5 17C9.67157 17 9 16.3284 9 15.5V1.5Z" fill="white"/>
+            </svg>
+          </button>
+          <button id="nextBtn" class="btn" disabled title="下一首">
+            <svg class="ic" viewBox="0 0 17 17" fill="none" aria-hidden="true">
+              <path d="M14.201 9.59111L2.02872 16.6916C1.14961 17.2326 0 16.5564 0 15.542L0 1.34098C0 0.326618 1.14961 -0.349622 2.02872 0.19137L14.201 7.29189C15.0802 7.76526 15.0802 9.11774 14.201 9.59111Z" fill="white"/>
+              <path d="M16.2298 13.4457C16.2298 14.3924 15.3507 15.2039 14.2011 15.2039C13.0514 15.2039 12.1723 14.3924 12.1723 13.4457V3.43732C12.1723 2.49059 13.0514 1.6791 14.2011 1.6791C15.3507 1.6791 16.2298 2.49059 16.2298 3.43732V13.4457Z" fill="white"/>
+            </svg>
+          </button>
+          <button id="skipBatchBtn" class="btn" disabled title="放弃本批剩余，计入已播，提前进入下一批">
+            <svg class="ic switch-text" aria-hidden="true" viewBox="0 0 125 29"><path d="M11.9911 9.90909C11.8889 9.04545 11.4741 8.375 10.7468 7.89773C10.0195 7.42045 9.12749 7.18182 8.07067 7.18182C7.29794 7.18182 6.6218 7.30682 6.04226 7.55682C5.4684 7.80682 5.01953 8.15057 4.69567 8.58807C4.37749 9.02557 4.2184 9.52273 4.2184 10.0795C4.2184 10.5455 4.32919 10.946 4.55078 11.2812C4.77805 11.6108 5.06783 11.8864 5.4201 12.108C5.77237 12.3239 6.14169 12.5028 6.52805 12.6449C6.91442 12.7812 7.26953 12.892 7.59339 12.9773L9.36612 13.4545C9.82067 13.5739 10.3263 13.7386 10.8832 13.9489C11.4457 14.1591 11.9826 14.446 12.494 14.8097C13.011 15.1676 13.4371 15.6278 13.7724 16.1903C14.1076 16.7528 14.2752 17.4432 14.2752 18.2614C14.2752 19.2045 14.0281 20.0568 13.5337 20.8182C13.0451 21.5795 12.3292 22.1847 11.386 22.6335C10.4485 23.0824 9.3093 23.3068 7.96839 23.3068C6.7184 23.3068 5.63601 23.1051 4.72124 22.7017C3.81214 22.2983 3.09624 21.7358 2.57351 21.0142C2.05646 20.2926 1.76385 19.4545 1.69567 18.5H3.87749C3.9343 19.1591 4.15589 19.7045 4.54226 20.1364C4.9343 20.5625 5.42862 20.8807 6.02521 21.0909C6.62749 21.2955 7.27521 21.3977 7.96839 21.3977C8.77521 21.3977 9.49965 21.267 10.1417 21.0057C10.7837 20.7386 11.2923 20.3693 11.6673 19.8977C12.0423 19.4205 12.2298 18.8636 12.2298 18.2273C12.2298 17.6477 12.0678 17.1761 11.744 16.8125C11.4201 16.4489 10.994 16.1534 10.4656 15.9261C9.93715 15.6989 9.36612 15.5 8.75249 15.3295L6.60476 14.7159C5.24112 14.3239 4.16158 13.7642 3.36612 13.0369C2.57067 12.3097 2.17294 11.358 2.17294 10.1818C2.17294 9.20454 2.43714 8.35227 2.96555 7.625C3.49964 6.89205 4.21555 6.32386 5.11328 5.92045C6.01669 5.51136 7.02521 5.30682 8.13885 5.30682C9.26385 5.30682 10.2638 5.50852 11.1388 5.91193C12.0139 6.30966 12.707 6.85511 13.2184 7.54829C13.7354 8.24148 14.0082 9.02841 14.0366 9.90909H11.9911ZM26.9208 23L22.1481 5.54545H24.2958L27.9435 19.7614H28.114L31.8299 5.54545H34.2163L37.9322 19.7614H38.1026L41.7504 5.54545H43.8981L39.1254 23H36.9435L33.0913 9.09091H32.9549L29.1026 23H26.9208ZM54.6452 5.54545V23H52.5316V5.54545H54.6452ZM63.9286 7.42045V5.54545H77.0195V7.42045H71.5309V23H69.4173V7.42045H63.9286ZM99.6005 11H97.4869C97.3619 10.392 97.1431 9.85795 96.8306 9.39773C96.5238 8.9375 96.1488 8.55114 95.7056 8.23864C95.2681 7.92045 94.7823 7.68182 94.2482 7.52273C93.7141 7.36364 93.1573 7.28409 92.5778 7.28409C91.521 7.28409 90.5636 7.55114 89.7056 8.08523C88.8533 8.61932 88.1744 9.40625 87.6687 10.446C87.1687 11.4858 86.9187 12.7614 86.9187 14.2727C86.9187 15.7841 87.1687 17.0597 87.6687 18.0994C88.1744 19.1392 88.8533 19.9261 89.7056 20.4602C90.5636 20.9943 91.521 21.2614 92.5778 21.2614C93.1573 21.2614 93.7141 21.1818 94.2482 21.0227C94.7823 20.8636 95.2681 20.6278 95.7056 20.3153C96.1488 19.9972 96.5238 19.608 96.8306 19.1477C97.1431 18.6818 97.3619 18.1477 97.4869 17.5455H99.6005C99.4414 18.4375 99.1516 19.2358 98.7312 19.9403C98.3107 20.6449 97.788 21.2443 97.163 21.7386C96.538 22.2273 95.8363 22.5994 95.0579 22.8551C94.2852 23.1108 93.4585 23.2386 92.5778 23.2386C91.0891 23.2386 89.7653 22.875 88.6062 22.1477C87.4471 21.4205 86.5352 20.3864 85.8704 19.0455C85.2056 17.7045 84.8732 16.1136 84.8732 14.2727C84.8732 12.4318 85.2056 10.8409 85.8704 9.5C86.5352 8.15909 87.4471 7.125 88.6062 6.39773C89.7653 5.67045 91.0891 5.30682 92.5778 5.30682C93.4585 5.30682 94.2852 5.43466 95.0579 5.69034C95.8363 5.94602 96.538 6.32102 97.163 6.81534C97.788 7.30398 98.3107 7.90057 98.7312 8.60511C99.1516 9.30398 99.4414 10.1023 99.6005 11ZM109.016 23V5.54545H111.13V13.3182L120.436 13.3182V5.54545H122.55V23H120.436V15.1932L111.13 15.1932V23H109.016Z" fill="#FFFEFE"/></svg>
+          </button>
+        </div>
+
+        <!-- 批次进度：文本在条上方，条全宽（与播放进度条等宽） -->
+        <div class="progress-block batch">
+          <div class="bar-texts">
+            <span id="batchText" class="time">本批 — / 20</span>
+            <span id="roundPos" class="time" title="本轮第 N 首">本轮第 — 首</span>
+          </div>
+          <div class="bar batch"><div class="fill" id="batchProgressBar"></div></div>
+        </div>
+      </div>
+      <!-- 右侧音量区 -->
+      <aside class="volume" id="volumeBox" title="音量 / 滚轮调节">
+        <div class="vol-stack">
+          <!-- 音量数字（标注 TEXT「100」[13.49,0.25 35×24] fs20 / Inter w400 / #FFFFFF，居中于滑条） -->
+          <div id="volValue" class="vol-value" aria-hidden="true">000</div>
+          <div class="vol-hit" id="volHit">
+            <div class="vol-track" id="volTrack">
+              <div class="vol-fill" id="volFill"></div>
+              <div class="vol-thumb" id="volThumb"></div>
+            </div>
+          </div>
+          <button id="muteBtn" class="mute-btn" title="静音 / 恢复" aria-label="静音 / 恢复">
+            <svg class="vol-icon" fill="none" aria-hidden="true" viewBox="0 0 30 30"><path d="M8.21811 9.31466V20.1749L8.28169 20.2225L15.8432 26.068V3.42978L8.21803 9.30649V9.31466H8.21811ZM21.9314 4.92773C21.8025 4.85244 21.6898 4.75237 21.5999 4.63328C21.5099 4.51419 21.4445 4.37846 21.4073 4.23392C21.3701 4.08938 21.3619 3.9389 21.3832 3.79119C21.4045 3.64347 21.4549 3.50144 21.5314 3.37331C21.8508 2.83455 22.5398 2.67261 23.0847 2.98693C25.0949 4.21813 26.7775 5.92566 27.939 7.99428C29.076 9.98341 29.7088 12.3017 29.7088 14.7411C29.7088 17.1969 29.076 19.4988 27.939 21.4872C26.7825 23.5511 25.1098 25.2794 23.0847 26.5027C22.957 26.5793 22.8153 26.6299 22.6679 26.6515C22.5205 26.6731 22.3703 26.6654 22.226 26.6287C22.0816 26.592 21.9459 26.5272 21.8267 26.4378C21.7075 26.3485 21.6071 26.2364 21.5314 26.1082C21.2105 25.577 21.3865 24.8925 21.9314 24.5626C23.6192 23.5395 25.0147 22.0985 25.9832 20.3789C26.9517 18.6592 27.4606 16.7188 27.4606 14.7452C27.4606 12.7715 26.9517 10.8312 25.9832 9.11148C25.0147 7.39179 23.6192 5.95084 21.9314 4.92773ZM6.85619 9.5398H2.2586V19.9491H6.85619V9.5398ZM7.1608 7.26248L16.2357 0.282383C16.4406 0.0993881 16.706 -0.0012085 16.9808 1.09584e-05C17.1307 -0.000316494 17.2793 0.029081 17.4178 0.0865043C17.5563 0.143928 17.6821 0.228238 17.7879 0.334562C17.8936 0.440886 17.9772 0.567116 18.0339 0.705955C18.0906 0.844794 18.1192 0.993489 18.1181 1.14345V8.66318C19.3192 9.15985 20.3449 10.0034 21.0641 11.0861C21.7833 12.1688 22.1633 13.4413 22.1555 14.7411C22.1596 16.0421 21.7783 17.3152 21.0598 18.3998C20.3413 19.4844 19.3177 20.332 18.1181 20.8356V28.3544C18.1181 28.5959 18.022 28.8374 17.8779 29.0387C17.7886 29.1579 17.6766 29.2581 17.5482 29.3336C17.4199 29.4092 17.2779 29.4584 17.1304 29.4786C16.9828 29.4988 16.8328 29.4895 16.6889 29.4512C16.545 29.4129 16.4102 29.3465 16.2922 29.2557L7.16091 22.2198H1.13706C0.987719 22.2204 0.839734 22.1914 0.701624 22.1346C0.563514 22.0778 0.438006 21.9942 0.332324 21.8887C0.226643 21.7832 0.142875 21.6578 0.0858422 21.5198C0.0288093 21.3817 -0.000362193 21.2338 6.80576e-06 21.0845V8.40519C-0.000510833 8.25545 0.0285046 8.10708 0.0853926 7.96857C0.142281 7.83006 0.225924 7.70412 0.331537 7.59797C0.43715 7.49183 0.562658 7.40755 0.70088 7.34996C0.839102 7.29237 0.987323 7.2626 1.13706 7.26236H7.16091L7.1608 7.26248ZM18.1181 10.1595V19.3375C18.7225 18.9903 19.2554 18.5314 19.6885 17.9852C20.4166 17.0608 20.8117 15.9179 20.81 14.7412C20.8044 13.8081 20.5526 12.893 20.0799 12.0885C19.6072 11.284 18.9304 10.6186 18.1181 10.1595Z" fill="white"/></svg>
+          </button>
+        </div>
+      </aside>
+      <!-- 左右缩放手柄：拖拽调整播放窗口宽度（min 1160 / max 2560） -->
+      <div class="resize-l" title="拖动调整宽度"></div>
+      <div class="resize-r" title="拖动调整宽度"></div>
+      <!-- 轮播完成态覆盖层（停止/查看结果后停驻，不消失）：海报半透明可见 + 统计 + 三出口 -->
+      <div id="roundDoneOverlay" class="round-done-overlay hidden">
+        <div class="round-done-card">
+          <div class="rd-badge">✔ 本轮已播完</div>
+          <div class="rd-stats" id="roundDoneStats"></div>
+          <div class="rd-actions">
+            <button id="rdAgainBtn" class="btn primary">再来一轮</button>
+            <button id="rdRescanBtn" class="btn">重新扫描</button>
+            <button id="rdCollapseBtn" class="btn ghost">收起播放器</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <audio id="audioEl" preload="auto"></audio>
+    <div id="playError" class="play-error hidden"></div>
+  </section>
+
+  <!-- 右侧曲目抽屉（本批列表，点击条目可快速跳转播放；absolute 于 main，顶边与 header 相切） -->
+  <aside id="queueDrawer" class="queue-panel">
+    <div class="drawer-head">
+      <button id="queueClose" class="drawer-toggle" title="收起">✕</button>
+      <h2>本批曲目 <span id="queueCount" class="drawer-count">0</span> <span id="queueTitle" class="queue-title"></span></h2>
+      <button id="queuePin" class="drawer-pin" title="固定侧栏（常驻显示）">📌</button>
+    </div>
+    <div id="batchList" class="batch-list"></div>
+  </aside>
+</main>
+
+<!-- 左右边缘热区：鼠标进入自动弹出对应抽屉 -->
+<div class="edge-zone edge-left" title="鼠标移入打开媒体库"></div>
+<div class="edge-zone edge-right" title="鼠标移入打开本批曲目"></div>
+
+<!-- 轮完弹窗 -->
+<div id="roundModal" class="modal hidden">
+  <div class="modal-card">
+    <h3>本轮已播完</h3>
+    <p id="roundSummary" class="muted"></p>
+    <div class="modal-actions">
+      <button id="newRoundBtn" class="btn primary">再来一轮</button>
+      <button id="stopBtn" class="btn">查看结果</button>
+    </div>
+  </div>
+</div>
+
+<!-- 确认弹窗（提前换批等） -->
+<div id="confirmModal" class="modal hidden">
+  <div class="modal-card">
+    <h3 id="confirmTitle">确认</h3>
+    <p id="confirmMsg" class="muted"></p>
+    <div class="modal-actions">
+      <button id="confirmOkBtn" class="btn primary">确认</button>
+      <button id="confirmCancelBtn" class="btn">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 目录浏览弹窗（极简：前往 + 选择文件夹 为核心；单栏子目录可选浏览） -->
+<div id="pickerModal" class="modal hidden">
+  <div class="modal-card native-picker">
+    <h3>选择媒体库目录</h3>
+    <div class="picker-pathrow">
+      <input id="pickerPath" type="text" spellcheck="false"
+             placeholder="输入盘符或 UNC 路径（如 \\192.168.1.100\music），回车前往">
+      <button id="pickerRootBtn" class="btn" title="显示本机盘符">根</button>
+      <button id="pickerGoBtn" class="btn primary">前往</button>
+    </div>
+    <div id="pickerList" class="picker-list"></div>
+    <div class="picker-foot">
+      <span id="pickerCur" class="muted small"></span>
+      <div class="modal-actions">
+        <button id="pickerUpBtn" class="btn">上级</button>
+        <button id="pickerUseBtn" class="btn primary">选择文件夹</button>
+        <button id="pickerCancelBtn" class="btn">取消</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 频谱设置入口（已并入播放条右上角 .player-corner） -->
+
+<!-- 频谱设置抽屉（与播放器同宽，从播放器下方弹出；Esc / ✕ / 再点齿轮关闭） -->
+<div id="vizPanel" class="viz-panel hidden">
+  <div id="vizPanelHead" class="viz-panel-head">
+    <span>设置</span>
+    <button id="vizClose" class="drawer-toggle" title="关闭">✕</button>
+  </div>
+  <div class="viz-tabs">
+    <button class="viz-tab is-active" data-tab="viz">可视化</button>
+    <button class="viz-tab" data-tab="title">标题动效</button>
+    <button class="viz-tab" data-tab="welcome">欢迎文本</button>
+    <button class="viz-tab" data-tab="scrape">在线刮削</button>
+  </div>
+  <div class="viz-panel-body">
+    <div class="viz-tab-page" data-tab="viz">
+      <div class="viz-modes">
+        <button class="viz-mode-btn is-active" data-mode="bars" title="条柱（上下/左右渐变）">条柱</button>
+        <button class="viz-mode-btn" data-mode="ring" title="环形（等宽径向线，首尾无缝）">环形</button>
+      </div>
+      <div class="viz-presets">
+        <button class="viz-preset-btn is-active" data-preset="default">默认</button>
+        <button class="viz-preset-btn" data-preset="winamp">Winamp</button>
+        <button class="viz-preset-btn" data-preset="neon">Neon</button>
+      </div>
+
+      <!-- 形状参数 -->
+      <div class="viz-group">
+        <div class="viz-gtitle">形状</div>
+        <div class="viz-grid2">
+          <label><span id="vizCountLabel">条数</span> <input type="range" data-param="barCount" min="16" max="180" step="2"><span class="viz-val" data-for="barCount"></span></label>
+          <label>间距 <input type="range" data-param="barGap" min="0" max="24" step="2"><span class="viz-val" data-for="barGap"></span></label>
+          <label class="viz-bars-only">圆角 <input type="range" data-param="barRound" min="0" max="4" step="1"><span class="viz-val" data-for="barRound"></span></label>
+          <label class="viz-bars-only">平滑 <input type="range" data-param="smoothing" min="0.05" max="0.9" step="0.05"><span class="viz-val" data-for="smoothing"></span></label>
+        </div>
+        <!-- 环形独有参数：切换环形时整组展开 -->
+        <div class="viz-ring-box viz-ring-only hidden">
+          <div class="viz-grid2">
+            <label>环直径 <input type="range" data-param="ringDiameter" min="0.2" max="0.9" step="0.01"><span class="viz-val" data-for="ringDiameter"></span></label>
+            <label>线条宽度 <input type="range" data-param="ringWidth" min="1" max="12" step="0.5"><span class="viz-val" data-for="ringWidth"></span></label>
+            <label>最大长度 <input type="range" data-param="ringLength" min="0.1" max="0.9" step="0.01"><span class="viz-val" data-for="ringLength"></span></label>
+            <label title="整体旋转速度（圈/秒），0 为不旋转">旋转 <input type="range" data-param="ringSpin" min="0" max="0.08" step="0.005"><span class="viz-val" data-for="ringSpin"></span></label>
+            <label title="指数平滑 Attack：越大上升越快">上升 <input type="range" data-param="ringAttack" min="0.1" max="0.9" step="0.05"><span class="viz-val" data-for="ringAttack"></span></label>
+            <label title="指数平滑 Release：越小回落越慢">回落 <input type="range" data-param="ringRelease" min="0.02" max="0.5" step="0.01"><span class="viz-val" data-for="ringRelease"></span></label>
+          </div>
+          <label class="viz-switch"><input type="checkbox" data-param="ringMirror" checked> 双圈镜像（频谱绕两圈）</label>
+          <label class="viz-switch"><input type="checkbox" data-param="ringParticles" checked> 高频粒子</label>
+          <div id="vizRingHint" class="viz-hint">双圈镜像 · 首尾长度/颜色自动无缝</div>
+        </div>
+      </div>
+
+      <!-- 颜色 -->
+      <div class="viz-group">
+        <div class="viz-gtitle">颜色</div>
+        <label>模式 <select data-param="colorMode">
+          <option value="gradient">环绕渐变</option>
+          <option value="single">单色</option>
+          <option value="hueCycle">色相漂移</option>
+          <option value="spectrum">光谱</option>
+        </select></label>
+        <div id="vizGradRow" class="viz-grad-row">
+          <span id="vizCornerLabel" class="viz-stops-label">渐变四角 · 单柱上下 / 柱间左右</span>
+          <div class="viz-corners">
+            <button class="viz-corner" data-corner="tl" title="左上：最左柱顶部色"></button>
+            <button class="viz-corner" data-corner="tr" title="右上：最右柱顶部色"></button>
+            <button class="viz-corner" data-corner="bl" title="左下：最左柱底部色"></button>
+            <button class="viz-corner" data-corner="br" title="右下：最右柱底部色"></button>
+          </div>
+        </div>
+        <div id="vizHsbRow" class="viz-hsb-row">
+          <label>色相 <input type="range" data-param="colorHue" min="0" max="360" step="1"><span class="viz-val" data-for="colorHue"></span></label>
+          <label>饱和度 <input type="range" data-param="colorSat" min="0" max="100" step="1"><span class="viz-val" data-for="colorSat"></span></label>
+          <label>明度 <input type="range" data-param="colorLight" min="0" max="100" step="1"><span class="viz-val" data-for="colorLight"></span></label>
+        </div>
+      </div>
+
+      <!-- 动效 -->
+      <div class="viz-group">
+        <div class="viz-gtitle">动效</div>
+        <div class="viz-grid2">
+          <label>亮度 <input type="range" data-param="alphaBoost" min="0" max="0.7" step="0.01"><span class="viz-val" data-for="alphaBoost"></span></label>
+          <label>下落 <input type="range" data-param="fall" min="0.7" max="1" step="0.01"><span class="viz-val" data-for="fall"></span></label>
+          <label>峰值保持 <input type="range" data-param="peakHold" min="0" max="20" step="1"><span class="viz-val" data-for="peakHold"></span></label>
+        </div>
+        <div class="viz-switch-row">
+          <label class="viz-switch"><input type="checkbox" data-param="peakDot"> 峰值光点</label>
+          <label class="viz-switch viz-bars-only"><input type="checkbox" data-param="mirror"> 镜像对称</label>
+          <label class="viz-switch"><input type="checkbox" data-param="phaseWave"> 波浪扫动</label>
+        </div>
+      </div>
+
+      <!-- 频段增益 -->
+      <div class="viz-group">
+        <div class="viz-gtitle">频段增益</div>
+        <div id="vizFreqRow" class="viz-freq-row">
+          <label>低频 <input type="range" data-param="freqGainLow" min="0.5" max="1.5" step="0.01"><span class="viz-val" data-for="freqGainLow"></span></label>
+          <label>中频 <input type="range" data-param="freqGainMid" min="0.5" max="1.5" step="0.01"><span class="viz-val" data-for="freqGainMid"></span></label>
+          <label>高频 <input type="range" data-param="freqGainHigh" min="0.5" max="1.5" step="0.01"><span class="viz-val" data-for="freqGainHigh"></span></label>
+        </div>
+      </div>
+
+      <button id="vizReset" class="btn viz-reset">恢复默认</button>
+    </div>
+    <div class="viz-tab-page hidden" data-tab="title">
+      <div class="viz-rows">
+        <label class="viz-switch"><input type="checkbox" id="titleFxEnabled"> 启用标题随节奏变色/闪动</label>
+        <label>强度 <input type="range" id="titleFxIntensity" min="0.1" max="1" step="0.05"><span class="viz-val" id="titleFxIntensityVal"></span></label>
+        <label>模式 <select id="titleFxMode">
+          <option value="both">随机色 + 亮度脉冲</option>
+          <option value="hue">仅随机色相</option>
+          <option value="light">仅亮度/辉光脉冲</option>
+        </select></label>
+        <label>变化幅度 <input type="range" id="titleFxAmplitude" min="0.1" max="1" step="0.05"><span class="viz-val" id="titleFxAmplitudeVal"></span></label>
+        <label>强度曲线 <input type="range" id="titleFxCurve" min="0.1" max="1" step="0.05"><span class="viz-val" id="titleFxCurveVal"></span></label>
+        <div class="viz-hint">变化幅度：亮度/辉光/色相转速的整体动态范围。强度曲线：越大越陡——低能量更被抑制、强节奏更爆发，闪烁对比更强。</div>
+      </div>
+    </div>
+    <div class="viz-tab-page hidden" data-tab="welcome">
+      <div class="viz-rows">
+        <label>欢迎标题 <input type="text" id="welcomeTitle" spellcheck="false" placeholder="欢迎使用RollPlay播放器"></label>
+        <label>欢迎副标题 <input type="text" id="welcomeMeta" spellcheck="false" placeholder="导入媒体库并扫描后，随机轮播开始"></label>
+        <div class="viz-hint">保存后立即生效并持久化（刷新不丢失）</div>
+      </div>
+    </div>
+    <div class="viz-tab-page hidden" data-tab="scrape">
+      <div class="viz-rows">
+        <label class="viz-switch"><input type="checkbox" id="scrapeEnabled"> 开启在线搜索歌词与刮削</label>
+        <div class="viz-hint">开启后，播放中如本地无歌词/封面，将联网从开源 API 刮削当前曲目：网易云 · lrclib 同步歌词 · MusicBrainz 专辑元数据 · Cover Art Archive / iTunes 封面。刮削成功的结果会写入项目内本地元数据库（data/meta），下次播放直接命中，不再重复联网。</div>
+        <div class="viz-gtitle scrape-sub">刮削状态</div>
+        <div id="scrapeStatusLine" class="scrape-status">空闲</div>
+        <div id="metaStatsLine" class="viz-hint">本地库：—</div>
+        <div class="viz-gtitle scrape-sub">最近记录</div>
+        <ul id="scrapeLogList" class="scrape-log"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 频谱右键菜单 -->
+<div id="vizMenu" class="viz-menu hidden">
+  <button id="vizMenuOpen" class="viz-menu-item">频谱设置</button>
+</div>
+
+<!-- 右键菜单（曲目行 / 目录路径行共用）：作为「二级菜单层」挂进当前抽屉，
+     在抽屉内上下左右居中显示，绝不越出主菜单边界，也不会被"点外部收抽屉"误判。 -->
+<div id="menuLayer" class="drawer-menu-layer hidden">
+  <div id="trackMenu" class="viz-menu drawer-menu">
+    <button id="trackMenuReveal" class="viz-menu-item">在文件夹中显示</button>
+    <button id="trackMenuCopy" class="viz-menu-item">复制路径</button>
+  </div>
+</div>
+
+<!-- 悬停说明气泡：按钮说明不常驻占位，鼠标停留后浮出 -->
+<div id="hoverTip" class="hover-tip hidden" role="tooltip"></div>
+
+<script type="module" src="app.js?v=20261108y"></script>
+</body>
+</html>
