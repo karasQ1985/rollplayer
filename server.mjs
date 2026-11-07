@@ -28,6 +28,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import os from 'node:os';
 import crypto from 'node:crypto';
 import { parseFile } from 'music-metadata'; // 成熟元数据/内嵌封面解析（mp3/flac/m4a/wav/ogg）
 import { metaStore, fingerprintOf } from './meta-store.mjs'; // 元数据本地库门面（worker 线程持有 SQLite）
@@ -36,6 +37,51 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const PORT_BASE = Number(process.env.MP_PORT || 9898);
 const MAX_PORT_TRIES = 4;
+/** 监听地址：默认只绑 IPv4 loopback，避免与环境中其他服务(如 127.0.0.1:8765)发生地址族冲突。
+    要让同局域网的其他设备（iPad / 手机）访问，启动时设 MP_HOST=0.0.0.0 放开（等价 start-lan.bat）。 */
+const HOST = process.env.MP_HOST || '127.0.0.1';
+
+/** 0.0.0.0 时列出本机所有可用的局域网地址，方便直接把链接抄到 iPad 上 */
+function lanUrls(port) {
+  const out = [];
+  try {
+    for (const addrs of Object.values(os.networkInterfaces())) {
+      for (const a of addrs || []) {
+        if (a.family === 'IPv4' && !a.internal) out.push(`http://${a.address}:${port}`);
+      }
+    }
+  } catch {}
+  return out;
+}
+
+/* 运行记录：data/run/service.json —— 让 start.bat 能精确管理"这一个"进程。
+   停止脚本据此做四重校验（pid 存活 / 进程名 node / 命令行含 server.mjs / 启动时刻吻合），
+   绝不按端口笼统杀 node，也绝不碰其他程序占用的端口。退出时自动删除。 */
+const RUN_DIR = path.join(__dirname, 'data', 'run');
+const RUN_FILE = path.join(RUN_DIR, 'service.json');
+function writeRunRecord(port) {
+  try {
+    fs.mkdirSync(RUN_DIR, { recursive: true });
+    const rec = {
+      pid: process.pid,
+      port,
+      host: HOST,
+      startedAt: Date.now(),
+      cwd: __dirname,
+      exe: process.execPath,
+    };
+    fs.writeFileSync(RUN_FILE, JSON.stringify(rec, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('[run] 写运行记录失败（不影响播放）:', e.message);
+  }
+}
+function clearRunRecord() {
+  try {
+    if (!fs.existsSync(RUN_FILE)) return;
+    const rec = JSON.parse(fs.readFileSync(RUN_FILE, 'utf8'));
+    if (rec && rec.pid === process.pid) fs.unlinkSync(RUN_FILE); // 只删自己写的那份
+  } catch {}
+}
 
 /** 音频格式白名单（前端与此保持一致） */
 const AUDIO_EXTS = new Set(['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.opus']);
@@ -1294,7 +1340,23 @@ async function handler(req, res) {
 // 元数据本地库：先起 worker（拿单实例锁、建表迁移），失败也只是降级成内存缓存，不影响服务启动
 const metaInit = await metaStore.init();
 console.log('[meta] 本地库模式:', metaInit.mode, metaInit.healthy ? '可用' : '降级', metaInit.dbPath || '');
-process.on('exit', () => { try { metaStore.dispose(); } catch {} });
+process.on('exit', () => {
+  try { metaStore.dispose(); } catch {}
+  try { clearRunRecord(); } catch {}
+});
+
+/* 优雅退出：Ctrl+C / Ctrl+Break / kill 时先删运行记录与收尾本地库再退出。
+   Windows 关控制台窗口会直接结束进程（走不到这里），那种情况由下次启动的 precheck 清理陈旧记录。 */
+let shuttingDown = false;
+function gracefulExit(sig) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[server] 收到 ${sig}，正在关闭 ...`);
+  try { clearRunRecord(); } catch {}
+  try { metaStore.dispose(); } catch {}
+  process.exit(0);
+}
+['SIGINT', 'SIGBREAK', 'SIGTERM'].forEach((sig) => process.on(sig, () => gracefulExit(sig)));
 
 function start(port, tries) {
   const server = http.createServer(handler);
@@ -1306,10 +1368,17 @@ function start(port, tries) {
       process.exit(1);
     }
   });
-  // 明确绑定 IPv4 loopback，避免与环境中其他服务(如 127.0.0.1:8765)发生地址族冲突
-  server.listen(port, '127.0.0.1', () => {
+  // 默认绑 IPv4 loopback；MP_HOST=0.0.0.0 时才对外，供同局域网设备访问
+  server.listen(port, HOST, () => {
+    writeRunRecord(port);   // 先登记身份，后续停止/状态都只认这条记录
     console.log(`[server] 媒体库轮播播放器已启动: http://127.0.0.1:${port}`);
     console.log(`[server] 支持音频格式: ${[...AUDIO_EXTS].join(' ')}`);
+    if (HOST === '0.0.0.0') {
+      console.log('[server] 已对外开放（MP_HOST=0.0.0.0），同局域网的设备可访问：');
+      const urls = lanUrls(port);
+      if (urls.length) urls.forEach((u) => console.log(`         ${u}`));
+      else console.log('         （未检测到可用的局域网 IPv4 地址）');
+    }
     if (process.env.MP_NO_OPEN !== '1') {
       import('node:child_process').then(({ spawn }) => {
         try {
