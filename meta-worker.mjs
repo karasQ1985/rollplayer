@@ -24,7 +24,7 @@ const COVER_DIR = workerData.coverDir;
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 fs.mkdirSync(COVER_DIR, { recursive: true });
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 /** 打开库并做一次幂等的建表/迁移 */
 function openDb() {
@@ -52,7 +52,8 @@ function openDb() {
       confidence    REAL,
       manualLock    INTEGER DEFAULT 0,
       fetchedAt     INTEGER,
-      updatedAt     INTEGER
+      updatedAt     INTEGER,
+      genreSource   TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_tracks_path ON tracks(path);
     CREATE TABLE IF NOT EXISTS covers (
@@ -75,6 +76,10 @@ function openDb() {
 function migrate(db) {
   const row = db.prepare('SELECT value FROM meta WHERE key = ?').get('schema_version');
   const current = row ? Number(row.value) : 0;
+  // v2：补流派来源列（老库走 ALTER；新库建表时已含该列，ALTER 会报重复则忽略）
+  if (current < 2) {
+    try { db.exec('ALTER TABLE tracks ADD COLUMN genreSource TEXT'); } catch {}
+  }
   if (current < SCHEMA_VERSION) {
     db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
       .run('schema_version', String(SCHEMA_VERSION));
@@ -93,7 +98,6 @@ const stStats = () => ({
   covers: db.prepare('SELECT COUNT(*) AS n FROM covers').get().n,
   withLyrics: db.prepare("SELECT COUNT(*) AS n FROM tracks WHERE lyrics IS NOT NULL AND lyrics <> ''").get().n,
 });
-
 const UPSERT_SQL = `
 INSERT INTO tracks (
   fingerprint, path, size, mtime, title, artist, album, albumArtist, year, trackNo, genre,
@@ -194,9 +198,51 @@ const ops = {
 
   async stats() {
     const s = stStats();
+    s.genreCovered = db.prepare("SELECT COUNT(*) AS n FROM tracks WHERE genre IS NOT NULL AND TRIM(genre) <> ''").get().n;
+    s.genreMissing = db.prepare("SELECT COUNT(*) AS n FROM tracks WHERE genre IS NULL OR TRIM(genre) = ''").get().n;
     let dbBytes = 0;
     try { dbBytes = fs.statSync(DB_PATH).size; } catch {}
     return { ...s, dbBytes, dbPath: DB_PATH, mode: workerData.mode || 'rw' };
+  },
+
+  /** 补流派队列：列出还没有流派的曲目（老的优先），工具按批拉取
+   *  junk: 0=只补空的（默认） 1=空的和 Other/Unknown 一起挑 2=只挑 Other/Unknown（回修用） */
+  async listGenreQueue({ limit = 200, junk = 0 }) {
+    const n = Math.max(1, Math.min(500, Number(limit) || 200));
+    const junkMode = Number(junk) || 0;
+    const junkCond = `(genre LIKE '%"Other"%' OR genre LIKE '%"Unknown"%' OR genre LIKE '%"Miscellaneous"%')`;
+    const missingCond = `(genre IS NULL OR TRIM(genre) = '')`;
+    const where = junkMode === 3 ? '1 = 1' : junkMode === 2 ? junkCond : junkMode === 1 ? `(${missingCond} OR ${junkCond})` : missingCond;
+    const rows = db.prepare(`
+      SELECT fingerprint, path, size, mtime, title, artist, album, year, genre, genreSource
+      FROM tracks
+      WHERE ${where}
+      ORDER BY COALESCE(updatedAt, 0) ASC
+      LIMIT ?
+    `).all(n);
+    const total = db.prepare(`SELECT COUNT(*) AS n FROM tracks WHERE ${where}`).get().n;
+    const covered = db.prepare("SELECT COUNT(*) AS n FROM tracks WHERE genre IS NOT NULL AND TRIM(genre) <> ''").get().n;
+    return { rows, total, covered, junk: junkMode };
+  },
+
+  /**
+   * 只写流派列（不动 path/size/title，避免 UPSERT 那种整行覆盖）
+   * genre 传 null 表示清空（用于回修垃圾值）；指纹匹配不到时按 path 兜底
+   */
+  async putGenre({ fingerprint, path: p, genre, source }) {
+    if (genre === undefined) return { updated: 0 };
+    const value = (genre === null || genre === '') ? null : String(genre);
+    const src = value === null ? null : (source || null);
+    const now = Date.now();
+    const r1 = db.prepare('UPDATE tracks SET genre = ?, genreSource = ?, updatedAt = ? WHERE fingerprint = ?')
+      .run(value, src, now, fingerprint || '');
+    if ((r1.changes || 0) > 0) return { updated: r1.changes, via: 'fingerprint', cleared: value === null };
+    if (p) {
+      const r2 = db.prepare('UPDATE tracks SET genre = ?, genreSource = ?, updatedAt = ? WHERE path = ?')
+        .run(value, src, now, String(p).toLowerCase());
+      return { updated: r2.changes || 0, via: 'path', cleared: value === null };
+    }
+    return { updated: 0, via: 'none' };
   },
 
   /** 清理：all = 清空全部；missing = 清掉源文件已不存在的记录 */

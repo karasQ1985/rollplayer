@@ -195,6 +195,17 @@ class MetaStore {
     return s ? { ...s, mode: this.mode, healthy: this.healthy, ...this.stats_ } : { mode: this.mode, healthy: false, ...this.stats_ };
   }
 
+  /** 补流派队列（只读）：junk 0=只补空 1=含垃圾值 2=只挑垃圾值（回修） */
+  async listGenreQueue(limit = 200, junk = 0) {
+    return this._call('listGenreQueue', { limit, junk }, { timeout: 8000 });
+  }
+
+  /** 写单首流派（只改 genre/genreSource 两列，不覆盖其他字段） */
+  async putGenre(row) {
+    if (this.mode === 'ro') return null;
+    return this._call('putGenre', row, { timeout: 8000 });
+  }
+
   async purge(scope = 'all') {
     if (this.mode === 'ro') return null;
     return this._call('purge', { scope }, { timeout: 15000 });

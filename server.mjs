@@ -673,9 +673,20 @@ function dbRowToResult(row, filePath) {
     ? { url: '/api/cover-hash?hash=' + row.coverHash, local: true, from: 'db' }
     : { url: '/api/cover-art?path=' + encodeURIComponent(filePath), local: true, from: 'embedded' };
   const meta = (row.title || row.artist || row.album)
-    ? { title: row.title, artist: row.artist, album: row.album, year: row.year || null }
+    ? { title: row.title, artist: row.artist, album: row.album, year: row.year || null, genre: parseGenreCell(row.genre), genreSource: row.genreSource || null }
     : null;
   return { lyrics, cover, meta, from: 'db', provider: row.provider || null };
+}
+
+/** genre 列存的是 JSON 数组字符串；旧数据/脏数据一律回退成单值数组，不抛错 */
+function parseGenreCell(raw) {
+  if (!raw) return [];
+  const s = String(raw).trim();
+  if (!s) return [];
+  if (s.startsWith('[')) {
+    try { const v = JSON.parse(s); if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean); } catch {}
+  }
+  return s.split(/[;|/]+/).map((x) => x.trim()).filter(Boolean);
 }
 
 /** 远程封面落地成本地文件；成功则把 result.cover.url 换成 /api/cover-hash?hash=，返回 hash */
@@ -1311,6 +1322,32 @@ async function handler(req, res) {
 
     if (req.method === 'GET' && p === '/api/meta/stats') {
       return json(res, 200, await metaStore.stats());
+    }
+
+    if (req.method === 'GET' && p === '/api/meta/genre-queue') {
+      const limit = Math.min(500, Number(url.searchParams.get('limit') || 200));
+      const junk = Math.min(3, Math.max(0, Number(url.searchParams.get('junk') || 0)));
+      const r = await metaStore.listGenreQueue(limit, junk);
+      return json(res, 200, r || { rows: [], total: 0, covered: 0 });
+    }
+
+    if (req.method === 'POST' && p === '/api/meta/genre') {
+      const body = await readJson(req).catch(() => ({}));
+      const list = Array.isArray(body && body.genre)
+        ? body.genre.map((x) => String(x).trim()).filter(Boolean)
+        : (body && body.genre ? [String(body.genre).trim()].filter(Boolean) : []);
+      // 空数组 = 清空该曲流派（用于回修 Other/Unknown 这类垃圾值）
+      const clearing = Array.isArray(body && body.genre) && body.genre.length === 0;
+      if (!body || !body.fingerprint || (!list.length && !clearing)) {
+        return json(res, 400, { error: 'BAD_REQUEST' });
+      }
+      const r = await metaStore.putGenre({
+        fingerprint: String(body.fingerprint),
+        path: body.path ? String(body.path) : null,
+        genre: clearing ? null : JSON.stringify(list.slice(0, 8)),
+        source: String(body.source || 'manual').slice(0, 24),
+      });
+      return json(res, 200, r || { updated: 0 });
     }
 
     if (req.method === 'POST' && p === '/api/meta/purge') {
