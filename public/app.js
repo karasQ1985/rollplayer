@@ -279,6 +279,14 @@ const playback = createPlayback(el.audioEl, {
     showPlayError(`连续 ${count} 首无法播放（最近：${provider.baseName(file.path)}），可能路径失效或格式不支持。已停止自动跳过，请刷新媒体库或停止。`);
     enableControls(false);
   },
+  // 自然播完的仪式：与手动切歌同一条时序（抬针 → 停声 → 收拢），收拢走完再由引擎换片
+  onAdvanceHold: (file, idx, reason) => {
+    if (reason !== 'ended') return 0;      // 解码失败等异常跳转不做仪式，保持快速跳过
+    const hold = runCueRitual(playerHasCover());
+    switchSettleUntil = performance.now() + hold;   // 仪式期间同样吞掉连点，手感与按钮切歌一致
+    setTimeout(() => { switchSettleUntil = 0; }, hold);
+    return hold;
+  },
 });
 
 /** 播放按钮图标：▶=当前暂停可播，⏸=正在播放可暂停；on 态由播放状态驱动（持久） */
@@ -571,14 +579,19 @@ function armCueDown() {
 
 /* 切歌前的收拢：已展开时先把宽度 / 内容左缘 / 封面收回（1.5s），确认复位后再切歌，
    这样新歌的封面加载动画一定从一个干净收起的版面上开始，不会在旧版面上直接弹新图 */
-function switchWithCollapse(fn) {
-  const now = performance.now();
-  if (now < switchSettleUntil) return;                       // 节拍窗口内：忽略连点
-  const hasCover = playerHasCover();
-  // 有封面：收拢走完再多留 30ms 余量，保证判定时 settling 已被摘掉
-  const swapAt = CUE_PRE_MS + (hasCover ? CUE_COLLAPSE_MS + 30 : CUE_SWITCH_MS);
-  switchSettleUntil = now + swapAt;                          // 留白期也算在门内，防止连点打断节拍
+function beginCollapse() {
+  const p = el.player;
+  el.coverReveal.classList.remove('replay');                // 入场动画 fill:both 会压住淡出
+  p.classList.add('settling');                              // 宽度/左缘这条过渡放慢到 1.5s
+  p.classList.remove('has-cover');                          // 触发收回：宽度、内容左移、封面缩回淡出
+  playerApplyWidth();
+  setTimeout(() => { p.classList.remove('settling'); }, CUE_COLLAPSE_MS);
+}
 
+/* 换片前的整套仪式：留白 → 抬针 → 停声 →（有封面时）收拢，返回"可以换片"要等的毫秒数。
+   手动切歌和自然播完共用这一条时序，区别只在于最后是谁来换片。 */
+function runCueRitual(hasCover) {
+  const total = CUE_PRE_MS + (hasCover ? CUE_COLLAPSE_MS + 30 : CUE_SWITCH_MS);
   clearTimeout(cuePreTimer);
   clearTimeout(cuePauseTimer);
   cuePreTimer = setTimeout(() => {                           // 留白结束才开始抬针/收拢
@@ -588,6 +601,15 @@ function switchWithCollapse(fn) {
       try { if (!el.audioEl.paused) el.audioEl.pause(); } catch {}
     }, CUE_LIFT_SETTLE_MS);
   }, CUE_PRE_MS);
+  return total;
+}
+
+function switchWithCollapse(fn) {
+  const now = performance.now();
+  if (now < switchSettleUntil) return;                       // 节拍窗口内：忽略连点
+  const hasCover = playerHasCover();
+  const swapAt = runCueRitual(hasCover);                     // 与自然播完同一条时序
+  switchSettleUntil = now + swapAt;                          // 留白期也算在门内，防止连点打断节拍
 
   setTimeout(() => {
     switchSettleUntil = 0;
@@ -596,15 +618,6 @@ function switchWithCollapse(fn) {
     const settled = !hasCover || (!p.classList.contains('settling') && !p.classList.contains('has-cover'));
     if (settled) fn();                                       // 新歌起播时由 play 事件落针
   }, swapAt);
-
-  function beginCollapse() {
-    const p = el.player;
-    el.coverReveal.classList.remove('replay');                // 入场动画 fill:both 会压住淡出
-    p.classList.add('settling');                              // 宽度/左缘这条过渡放慢到 1.5s
-    p.classList.remove('has-cover');                          // 触发收回：宽度、内容左移、封面缩回淡出
-    playerApplyWidth();
-    setTimeout(() => { p.classList.remove('settling'); }, CUE_COLLAPSE_MS);
-  }
 }
 
 /* 只在「唱片位 + 封面块」内、且没有拖动位移时才当作点击（拖动是挪窗口/调宽度） */

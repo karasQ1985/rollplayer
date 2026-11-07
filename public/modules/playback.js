@@ -16,7 +16,19 @@
  *   - reset()：切池/停止时作废在途回调并清 audio，抑制残留 error/ended 干扰新轮。
  */
 
-export function createPlayback(audioEl, { onFilePlayed, onFileChange, onBatchDone, onFileError, onPlayState, onFuseBreak }) {
+export function createPlayback(audioEl, { onFilePlayed, onFileChange, onBatchDone, onFileError, onPlayState, onFuseBreak, onAdvanceHold }) {
+  /** 推进前的可注入停留：上层（UI）用它插入唱针抬起等仪式，返回需要延后的毫秒数。
+      返回 0 或抛错都按"不延迟"处理，保证引擎不会因为 UI 异常卡住连播。 */
+  function holdMs(reason, f, i) {
+    if (typeof onAdvanceHold !== 'function') return 0;
+    try {
+      const v = onAdvanceHold(f, i, reason);
+      return Number.isFinite(v) && v > 0 ? v : 0;
+    } catch (e) {
+      console.warn('[playback] onAdvanceHold 抛错，本次按不延迟处理：', e);
+      return 0;
+    }
+  }
   let batchFiles = [];
   let idx = -1;
   let advancing = false;       // 防重复推进标志（同刻并发）
@@ -145,7 +157,14 @@ export function createPlayback(audioEl, { onFilePlayed, onFileChange, onBatchDon
     if (!f) return;
     consecFail = 0; // 正常播完复位失败计数
     onFilePlayed(f, idx);
-    _advance();
+    // 自然结束的仪式窗口：UI 在此刻抬针并延后推进；期间若用户手动切歌，idx 已变，本次推进作废
+    const myIdx = idx;
+    const hold = holdMs('ended', f, myIdx);
+    if (hold > 0) {
+      setTimeout(() => { if (idx === myIdx) _advance(); }, hold);
+    } else {
+      _advance();
+    }
   });
   audioEl.addEventListener('error', () => {
     const f = fileOf(idx);
