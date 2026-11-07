@@ -1324,6 +1324,12 @@ async function handler(req, res) {
       return json(res, 200, await metaStore.stats());
     }
 
+    if (req.method === 'GET' && p === '/api/meta/audit') {
+      const top = Math.min(30, Number(url.searchParams.get('top') || 8));
+      const r = await metaStore.audit(top);
+      return json(res, 200, r || { tracks: 0, fields: {}, providers: {}, genreBuckets: [], worstAlbums: [] });
+    }
+
     if (req.method === 'GET' && p === '/api/meta/genre-queue') {
       const limit = Math.min(500, Number(url.searchParams.get('limit') || 200));
       const junk = Math.min(3, Math.max(0, Number(url.searchParams.get('junk') || 0)));

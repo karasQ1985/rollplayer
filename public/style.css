@@ -770,6 +770,17 @@ main {
 .scrape-log li.ok .lg-res { color: #5fd38f; }
 .scrape-log li.fail .lg-res { color: #f07171; }
 
+/* ---------- 本地库完整度（/api/meta/audit 的可视化） ---------- */
+.audit-box { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; border: 1px solid var(--glass-line); border-radius: 6px; background: var(--glass-ctl); min-width: 0; max-width: 100%; }
+.audit-row { display: grid; grid-template-columns: 34px 1fr 52px; align-items: center; gap: 8px; }
+.audit-k { font-size: 10px; color: var(--muted); white-space: nowrap; }
+.audit-bar { height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.audit-bar i { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
+.audit-row.low .audit-bar i { background: #f0a871; }
+.audit-v { font-size: 10px; color: var(--text); text-align: right; font-family: Consolas, monospace; }
+.audit-foot { font-size: 10px; color: var(--muted); opacity: .85; white-space: normal; line-height: 1.4; padding-top: 2px; }
+.audit-worst { font-size: 10px; color: var(--muted); opacity: .85; white-space: normal; line-height: 1.4; overflow: hidden; overflow-wrap: anywhere; }
+
 /* 刮削进行中：仅唱片闪烁提示（只动 opacity，不动 transform，不影响旋转与唱臂） */
 .poster-box.scraping .disc { animation: scrapeBlink 1.15s ease-in-out infinite; }
 @keyframes scrapeBlink {

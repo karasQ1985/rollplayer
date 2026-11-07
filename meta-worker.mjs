@@ -205,6 +205,71 @@ const ops = {
     return { ...s, dbBytes, dbPath: DB_PATH, mode: workerData.mode || 'rw' };
   },
 
+  /**
+   * 完整度切片（只读、零写入）：字段覆盖率 / 来源分布 / 流派桶 / 缺口最多的专辑
+   * 一次扫全表（几百行级别）在内存里聚合，不建索引也不改表结构
+   */
+  async audit({ top = 8 } = {}) {
+    const rows = db.prepare(`
+      SELECT path, title, artist, album, year, genre, coverHash, lyrics, provider, genreSource
+      FROM tracks
+    `).all();
+    const total = rows.length;
+    const filled = (v) => v !== null && v !== undefined && String(v).trim() !== '';
+    const fields = { title: 0, artist: 0, album: 0, year: 0, genre: 0, cover: 0, lyrics: 0 };
+    const providers = {};
+    const genreCount = {};
+    const albumAgg = new Map();
+
+    const parseGenres = (raw) => {
+      if (!raw) return [];
+      try { const v = JSON.parse(raw); if (Array.isArray(v)) return v.map(String); } catch {}
+      return String(raw).split(/[;|/]+/).map((x) => x.trim()).filter(Boolean);
+    };
+
+    for (const r of rows) {
+      if (filled(r.title)) fields.title++;
+      if (filled(r.artist)) fields.artist++;
+      if (filled(r.album)) fields.album++;
+      if (filled(r.year)) fields.year++;
+      if (r.coverHash) fields.cover++;
+      if (filled(r.lyrics)) fields.lyrics++;
+      const genres = parseGenres(r.genre);
+      if (genres.length) fields.genre++;
+      for (const g of genres) genreCount[g] = (genreCount[g] || 0) + 1;
+      const p = r.provider || 'none';
+      providers[p] = (providers[p] || 0) + 1;
+
+      const key = (r.album || '（未知专辑）') + '|' + (r.artist || '');
+      const agg = albumAgg.get(key) || { album: r.album || '（未知专辑）', artist: r.artist || '', tracks: 0, noGenre: 0, noCover: 0, noYear: 0 };
+      agg.tracks++;
+      if (!genres.length) agg.noGenre++;
+      if (!r.coverHash) agg.noCover++;
+      if (!filled(r.year)) agg.noYear++;
+      albumAgg.set(key, agg);
+    }
+
+    const buckets = Object.entries(genreCount)
+      .map(([name, n]) => ({ name, n }))
+      .sort((a, b) => b.n - a.n);
+
+    const worstAlbums = [...albumAgg.values()]
+      .filter((a) => a.noGenre > 0)
+      .sort((a, b) => b.noGenre - a.noGenre || b.tracks - a.tracks)
+      .slice(0, Math.max(1, Math.min(30, Number(top) || 8)));
+
+    return {
+      tracks: total,
+      fields,
+      providers,
+      genreBuckets: buckets,
+      genreBucketCount: buckets.length,
+      worstAlbums,
+      genreCovered: fields.genre,
+      genreMissing: total - fields.genre,
+    };
+  },
+
   /** 补流派队列：列出还没有流派的曲目（老的优先），工具按批拉取
    *  junk: 0=只补空的（默认） 1=空的和 Other/Unknown 一起挑 2=只挑 Other/Unknown（回修用） */
   async listGenreQueue({ limit = 200, junk = 0 }) {

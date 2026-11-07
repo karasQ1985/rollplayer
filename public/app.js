@@ -3216,10 +3216,51 @@ async function refreshMetaStats() {
   try {
     const r = await fetch('/api/meta/stats');
     const s = await r.json();
-    if (!s || s.healthy === false && s.tracks === undefined) { el.textContent = '本地库：不可用（联网刮削结果仅本次有效）'; return; }
+    if (!s || s.healthy === false && s.tracks === undefined) { el.textContent = '本地库：不可用（联网刮削结果仅本次有效）'; refreshMetaAudit(false); return; }
     const mb = ((s.dbBytes || 0) / 1048576).toFixed(2);
     el.textContent = '本地库：' + (s.tracks || 0) + ' 首 · ' + (s.covers || 0) + ' 张封面 · ' + mb + ' MB · ' + (s.mode === 'ro' ? '只读（另一实例在写）' : '可写');
-  } catch { el.textContent = '本地库：不可用（联网刮削结果仅本次有效）'; }
+  } catch { el.textContent = '本地库：不可用（联网刮削结果仅本次有效）'; refreshMetaAudit(false); return; }
+  refreshMetaAudit(true);
+}
+
+const AUDIT_LABELS = { title: '曲名', artist: '歌手', album: '专辑', year: '年份', genre: '流派', cover: '封面', lyrics: '歌词' };
+const AUDIT_ORDER = ['title', 'artist', 'album', 'year', 'genre', 'cover', 'lyrics'];
+/** 字段完整度 + 缺口专辑：只读接口，失败就整块隐藏，不打扰其它设置项 */
+async function refreshMetaAudit(show) {
+  const box = $('metaAuditBox');
+  if (!box) return;
+  if (!show) { box.classList.add('hidden'); return; }
+  try {
+    const r = await fetch('/api/meta/audit?top=5');
+    const a = await r.json();
+    if (!a || !a.tracks) { box.classList.add('hidden'); return; }
+
+    const rows = AUDIT_ORDER.map((k) => {
+      const n = (a.fields && a.fields[k]) || 0;
+      const pct = a.tracks ? Math.round((n / a.tracks) * 100) : 0;
+      return `<div class="audit-row${pct < 60 ? ' low' : ''}">` +
+        `<span class="audit-k">${AUDIT_LABELS[k]}</span>` +
+        `<span class="audit-bar"><i style="width:${pct}%"></i></span>` +
+        `<span class="audit-v">${n}/${a.tracks}</span></div>`;
+    }).join('');
+
+    const prov = Object.entries(a.providers || {})
+      .sort((x, y) => y[1] - x[1])
+      .map(([k, v]) => `${escapeHtml(k)} ${v}`)
+      .join(' / ');
+
+    const foot = `<div class="audit-foot">流派 ${a.genreBucketCount || 0} 个分类 · 来源 ${prov || '—'}</div>`;
+
+    const worst = (a.worstAlbums && a.worstAlbums.length)
+      ? `<div class="audit-worst">缺流派最多：` +
+        a.worstAlbums.slice(0, 3)
+          .map((x) => `${escapeHtml(x.album)} ${x.noGenre}/${x.tracks}`)
+          .join(' · ') + `</div>`
+      : '';
+
+    box.innerHTML = rows + foot + worst;
+    box.classList.remove('hidden');
+  } catch { box.classList.add('hidden'); }
 }
 
 document.querySelectorAll('.viz-tab').forEach((btn) => {

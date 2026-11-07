@@ -195,6 +195,11 @@ class MetaStore {
     return s ? { ...s, mode: this.mode, healthy: this.healthy, ...this.stats_ } : { mode: this.mode, healthy: false, ...this.stats_ };
   }
 
+  /** 完整度切片（只读）：字段覆盖率 / 来源分布 / 流派桶 / 缺口最多的专辑 */
+  async audit(top = 8) {
+    return this._call('audit', { top }, { timeout: 8000 });
+  }
+
   /** 补流派队列（只读）：junk 0=只补空 1=含垃圾值 2=只挑垃圾值（回修） */
   async listGenreQueue(limit = 200, junk = 0) {
     return this._call('listGenreQueue', { limit, junk }, { timeout: 8000 });
