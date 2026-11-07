@@ -713,7 +713,7 @@ main {
   background: var(--glass-1); border-bottom: 1px solid var(--glass-line);
   user-select: none; flex: none;
 }
-.viz-panel-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.viz-panel-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; min-width: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-gutter: stable; }
 .viz-tabs { display: flex; border-bottom: 1px solid var(--glass-line); flex: none; }
 .viz-tab {
   flex: 1; padding: 7px 0; font-size: 12px; border: none;
@@ -722,7 +722,7 @@ main {
 }
 .viz-tab:hover { color: var(--text); }
 .viz-tab.is-active { color: var(--play); border-bottom-color: var(--play); }
-.viz-tab-page { display: flex; flex-direction: column; gap: 8px; }
+.viz-tab-page { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .viz-presets { display: flex; gap: 6px; }
 .viz-preset-btn {
   flex: 1; padding: 5px 0; font-size: 11px; border-radius: 6px;
@@ -809,8 +809,8 @@ main {
 
 /* ---------- 频谱颜色细节（渐变停靠点 / 色环 / 频段权重） ---------- */
 .viz-grad-row { display: flex; flex-direction: column; gap: 5px; padding-top: 2px; border-top: 1px dashed var(--glass-line); }
-/* HSB 与频段增益：三列并排，消除单行纵向浪费 */
-.viz-hsb-row, .viz-freq-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px 12px; align-items: center; padding-top: 2px; }
+/* HSB 与频段增益：与 .viz-grid2 用同一套网格，保证滑块宽度和起点跨组一致 */
+.viz-hsb-row, .viz-freq-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 5px 14px; align-items: center; padding-top: 2px; }
 .viz-hsb-row label, .viz-freq-row label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); white-space: nowrap; }
 .viz-hsb-row input[type="range"], .viz-freq-row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); height: 13px; }
 
@@ -1518,3 +1518,16 @@ main {
   opacity: 1; transition: opacity .14s ease;
 }
 .hover-tip.hidden { display: none; }
+/* ---------- 滑块行统一三段：标签列定宽 / 滑块 / 数值列 ----------
+   标签文字宽度不一（「平滑」vs「峰值保持」）会让 flex 布局下的滑块起点和长度各不相同；
+   这里把标签列固定住，跨组、跨页的滑块起点与宽度都一致。
+   放在文件末尾，确保覆盖前面 .viz-rows / .viz-grid2 / .viz-hsb-row 的 flex 定义。 */
+.viz-panel .viz-rows label:has(input[type="range"]),
+.viz-panel .viz-grid2 label:has(input[type="range"]),
+.viz-panel .viz-hsb-row label,
+.viz-panel .viz-freq-row label {
+  display: grid;
+  grid-template-columns: 4.6em minmax(0, 1fr) 30px;
+  gap: 6px;
+  align-items: center;
+}
