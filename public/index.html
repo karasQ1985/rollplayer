@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>媒体库轮播播放器</title>
-<link rel="stylesheet" href="style.css?v=20261108zi">
+<link rel="stylesheet" href="style.css?v=20261108zj">
 </head>
 <body>
 
@@ -360,8 +360,8 @@
       </div>
 
       <!-- 形状参数 -->
-      <div class="viz-group">
-        <div class="viz-gtitle">形状</div>
+      <details class="viz-group" open>
+        <summary class="viz-gtitle">形状</summary>
         <div class="viz-grid2">
           <label><span id="vizCountLabel">条数</span> <input type="range" data-param="barCount" min="16" max="180" step="2"><span class="viz-val" data-for="barCount"></span></label>
           <label>间距 <input type="range" data-param="barGap" min="0" max="24" step="2"><span class="viz-val" data-for="barGap"></span></label>
@@ -382,11 +382,11 @@
           <label class="viz-switch"><input type="checkbox" data-param="ringParticles" checked> 高频粒子</label>
           <div id="vizRingHint" class="viz-hint">双圈镜像 · 首尾长度/颜色自动无缝</div>
         </div>
-      </div>
+      </details>
 
       <!-- 颜色 -->
-      <div class="viz-group">
-        <div class="viz-gtitle">颜色</div>
+      <details class="viz-group">
+        <summary class="viz-gtitle">颜色</summary>
         <label>模式 <select data-param="colorMode">
           <option value="gradient">环绕渐变</option>
           <option value="single">单色</option>
@@ -407,11 +407,11 @@
           <label>饱和度 <input type="range" data-param="colorSat" min="0" max="100" step="1"><span class="viz-val" data-for="colorSat"></span></label>
           <label>明度 <input type="range" data-param="colorLight" min="0" max="100" step="1"><span class="viz-val" data-for="colorLight"></span></label>
         </div>
-      </div>
+      </details>
 
       <!-- 动效 -->
-      <div class="viz-group">
-        <div class="viz-gtitle">动效</div>
+      <details class="viz-group" open>
+        <summary class="viz-gtitle">动效</summary>
         <div class="viz-grid2">
           <label>亮度 <input type="range" data-param="alphaBoost" min="0" max="0.7" step="0.01"><span class="viz-val" data-for="alphaBoost"></span></label>
           <label>下落 <input type="range" data-param="fall" min="0.7" max="1" step="0.01"><span class="viz-val" data-for="fall"></span></label>
@@ -422,17 +422,17 @@
           <label class="viz-switch viz-bars-only"><input type="checkbox" data-param="mirror"> 镜像对称</label>
           <label class="viz-switch"><input type="checkbox" data-param="phaseWave"> 波浪扫动</label>
         </div>
-      </div>
+      </details>
 
       <!-- 频段增益 -->
-      <div class="viz-group">
-        <div class="viz-gtitle">频段增益</div>
+      <details class="viz-group">
+        <summary class="viz-gtitle">频段增益</summary>
         <div id="vizFreqRow" class="viz-freq-row">
           <label>低频 <input type="range" data-param="freqGainLow" min="0.5" max="1.5" step="0.01"><span class="viz-val" data-for="freqGainLow"></span></label>
           <label>中频 <input type="range" data-param="freqGainMid" min="0.5" max="1.5" step="0.01"><span class="viz-val" data-for="freqGainMid"></span></label>
           <label>高频 <input type="range" data-param="freqGainHigh" min="0.5" max="1.5" step="0.01"><span class="viz-val" data-for="freqGainHigh"></span></label>
         </div>
-      </div>
+      </details>
 
       <button id="vizReset" class="btn viz-reset">恢复默认</button>
     </div>
@@ -489,6 +489,6 @@
 <!-- 悬停说明气泡：按钮说明不常驻占位，鼠标停留后浮出 -->
 <div id="hoverTip" class="hover-tip hidden" role="tooltip"></div>
 
-<script type="module" src="app.js?v=20261108zi"></script>
+<script type="module" src="app.js?v=20261108zj"></script>
 </body>
 </html>
